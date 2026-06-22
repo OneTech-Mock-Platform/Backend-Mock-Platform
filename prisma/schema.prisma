@@ -1,0 +1,34 @@
+generator client {
+  provider        = "prisma-client-js"
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+}
+
+model OpenApiSpec {
+  id        String     @id @default(uuid())
+  name      String
+  filePath  String
+  content   String
+  createdAt DateTime   @default(now())
+  endpoints Endpoint[]
+}
+
+model Endpoint {
+  id         String     @id @default(uuid())
+  path       String
+  method     String
+  specId     String
+  spec       OpenApiSpec @relation(fields: [specId], references: [id], onDelete: Cascade)
+  scenarios  Scenario[]
+}
+
+model Scenario {
+  id          String   @id @default(uuid())
+  statusCode  Int
+  description String?
+  endpointId  String
+  endpoint    Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+}
