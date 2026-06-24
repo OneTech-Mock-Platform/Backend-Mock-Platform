@@ -2,10 +2,14 @@ import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/commo
 import { SpecificationService } from './specification.service';
 import { CreateSpecificationDto } from './dto/create-specification.dto';
 import { UpdateSpecificationDto } from './dto/update-specification.dto';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Controller('specifications')
 export class SpecificationController {
-	constructor(private readonly specificationService: SpecificationService) {}
+	constructor(
+		private readonly specificationService: SpecificationService,
+		private readonly prisma: PrismaService,
+	) {}
 
 	@Get()
 	findAll() {
@@ -15,6 +19,15 @@ export class SpecificationController {
 	@Get(':id')
 	findOne(@Param('id') id: string) {
 		return this.specificationService.findOne(id);
+	}
+
+	@Get(':id/endpoints')
+	async findEndpoints(@Param('id') id: string) {
+		const endpoints = await this.prisma.endpoint.findMany({
+			where: { specId: id },
+			orderBy: [{ method: 'asc' }, { path: 'asc' }],
+		});
+		return { items: endpoints };
 	}
 
 	@Post()
