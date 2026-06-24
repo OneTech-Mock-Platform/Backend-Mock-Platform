@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { ParsingService } from '../parsing/parsing.service';
 import { CreateSpecificationDto } from './dto/create-specification.dto';
 import { UpdateSpecificationDto } from './dto/update-specification.dto';
 
@@ -10,7 +11,10 @@ type SpecificationSummary = {
 
 @Injectable()
 export class SpecificationService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly parsingService: ParsingService,
+  ) {}
 
   async create(dto: CreateSpecificationDto) {
     const created = await this.prisma.openApiSpec.create({
@@ -20,6 +24,8 @@ export class SpecificationService {
         content: dto.content,
       },
     });
+
+    await this.parseAndSaveEndpoints(created.id, dto.content, dto.fileName!);
 
     return this.toResponse(created);
   }
@@ -49,14 +55,18 @@ export class SpecificationService {
   async update(id: string, dto: UpdateSpecificationDto) {
     await this.ensureExists(id);
 
+    const existing = await this.prisma.openApiSpec.findUnique({ where: { id } });
+
     const updated = await this.prisma.openApiSpec.update({
       where: { id },
       data: {
         name: dto.name,
-        filePath: dto.fileName,
+        filePath: dto.fileName ?? existing?.filePath,
         content: dto.content,
       },
     });
+
+    await this.parseAndSaveEndpoints(updated.id, updated.content, updated.filePath);
 
     return this.toResponse(updated);
   }
@@ -79,6 +89,25 @@ export class SpecificationService {
     }
 
     return existing;
+  }
+
+  private async parseAndSaveEndpoints(specId: string, content: string, fileName: string) {
+    const parsed = this.parsingService.parse(content, fileName);
+
+    await this.prisma.endpoint.deleteMany({
+      where: { specId },
+    });
+
+    if (parsed.endpoints.length > 0) {
+      await this.prisma.endpoint.createMany({
+        data: parsed.endpoints.map((endpoint) => ({
+          specId,
+          path: endpoint.path,
+          method: endpoint.method,
+          summary: endpoint.summary,
+        })),
+      });
+    }
   }
 
   private toResponse(item: { id: string; name: string; filePath: string; content: string; createdAt: Date }) {

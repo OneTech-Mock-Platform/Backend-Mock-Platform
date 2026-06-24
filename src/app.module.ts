@@ -4,9 +4,12 @@ import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { OpenApiMockModule } from './openapi-mock/openapi-mock.module';
 import { SpecificationModule } from './specification/specification.module';
+import { ScenarioModule } from './scenario/scenario.module';
+import { MockDataModule } from './mock-data/mock-data.module';
+import { EndpointModule } from './endpoint/endpoint.module';
 
 @Module({
-  imports: [PrismaModule, OpenApiMockModule, SpecificationModule],
+  imports: [PrismaModule, OpenApiMockModule, SpecificationModule, ScenarioModule, MockDataModule, EndpointModule],
   controllers: [AppController],
   providers: [AppService],
 })
