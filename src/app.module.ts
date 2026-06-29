@@ -7,9 +7,10 @@ import { SpecificationModule } from './specification/specification.module';
 import { ScenarioModule } from './scenario/scenario.module';
 import { MockDataModule } from './mock-data/mock-data.module';
 import { EndpointModule } from './endpoint/endpoint.module';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
-  imports: [PrismaModule, OpenApiMockModule, SpecificationModule, ScenarioModule, MockDataModule, EndpointModule],
+  imports: [PrismaModule, OpenApiMockModule, SpecificationModule, ScenarioModule, MockDataModule, EndpointModule, AuthModule],
   controllers: [AppController],
   providers: [AppService],
 })
