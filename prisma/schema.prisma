@@ -21,6 +21,7 @@ model Endpoint {
   path       String
   method     String
   summary    String?
+  responses  Json?
   specId     String
   spec       OpenApiSpec @relation(fields: [specId], references: [id], onDelete: Cascade)
   scenarios  Scenario[]

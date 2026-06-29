@@ -90,7 +90,7 @@ export class SpecificationService {
 
     return existing;
   }
-
+/* 
   private async parseAndSaveEndpoints(specId: string, content: string, fileName: string) {
     const parsed = this.parsingService.parse(content, fileName);
 
@@ -105,11 +105,53 @@ export class SpecificationService {
           path: endpoint.path,
           method: endpoint.method,
           summary: endpoint.summary,
+          responses: endpoint.responses,
         })),
       });
     }
   }
+ */
 
+  private async parseAndSaveEndpoints(
+  specId: string,
+  content: string,
+  fileName: string,
+) {
+  const parsed = this.parsingService.parse(content, fileName);
+
+  await this.prisma.endpoint.deleteMany({ where: { specId } });
+
+  for (const ep of parsed.endpoints) {
+    await this.prisma.endpoint.create({
+      data: {
+        specId,
+        path: ep.path,
+        method: ep.method,
+        summary: ep.summary ?? null,
+        // ← On stocke TOUT ici dans le champ Json?
+     /*    responses: {
+          description: ep.description ?? null,
+          operationId: ep.operationId ?? null,
+          tags: ep.tags,
+          parameters: ep.parameters,
+          requestBody: ep.requestBody ?? null,
+          responses: ep.responses,
+        }, */
+
+        responses: {
+  description: ep.description ?? null,
+  operationId: ep.operationId ?? null,
+  tags: ep.tags,
+  parameters: JSON.parse(JSON.stringify(ep.parameters)),
+  requestBody: ep.requestBody
+    ? JSON.parse(JSON.stringify(ep.requestBody))
+    : null,
+  responses: JSON.parse(JSON.stringify(ep.responses)),
+},
+      },
+    });
+  }
+}
   private toResponse(item: { id: string; name: string; filePath: string; content: string; createdAt: Date }) {
     const summary = this.summarizeContent(item.content);
     const fileFormat = this.resolveFormat(item.filePath);
