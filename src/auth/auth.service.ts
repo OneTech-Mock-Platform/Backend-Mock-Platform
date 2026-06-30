@@ -1,9 +1,10 @@
-import { Injectable, ConflictException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, ConflictException, UnauthorizedException, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { LoginUserDto } from './dto/login-user.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 
 @Injectable()
 export class AuthService {
@@ -54,6 +55,41 @@ export class AuthService {
     return {
       access_token,
       user: { id: user.id, name: user.name, email: user.email },
+    };
+  }
+
+  async updateProfile(userId: number, dto: UpdateProfileDto) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('Utilisateur non trouvé');
+    }
+
+    // Vérifier le mot de passe actuel si on veut changer le mot de passe
+    /*if (dto.currentPassword && dto.newPassword) {
+      const isMatch = await bcrypt.compare(dto.currentPassword, user.password);
+      if (!isMatch) {
+        throw new UnauthorizedException('Mot de passe actuel incorrect');
+      }
+    }*/
+
+    // Préparer les données à mettre à jour
+    const updateData: any = {};
+    if (dto.name) {
+      updateData.name = dto.name;
+    }
+    if (dto.newPassword) {
+      updateData.password = await bcrypt.hash(dto.newPassword, 10);
+    }
+
+    const updatedUser = await this.prisma.user.update({
+      where: { id: userId },
+      data: updateData,
+    });
+
+    return {
+      id: updatedUser.id,
+      name: updatedUser.name,
+      email: updatedUser.email,
     };
   }
 }
