@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ParsingService } from '../parsing/parsing.service';
 import { CreateSpecificationDto } from './dto/create-specification.dto';
@@ -16,12 +16,13 @@ export class SpecificationService {
     private readonly parsingService: ParsingService,
   ) {}
 
-  async create(dto: CreateSpecificationDto) {
+  async create(dto: CreateSpecificationDto, userId: number) {
     const created = await this.prisma.openApiSpec.create({
       data: {
         name: dto.name,
         filePath: dto.fileName,
         content: dto.content,
+        userId: userId,
       },
     });
 
@@ -30,8 +31,9 @@ export class SpecificationService {
     return this.toResponse(created);
   }
 
-  async findAll() {
+  async findAll(userId: number) {
     const items = await this.prisma.openApiSpec.findMany({
+      where: { userId },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -40,7 +42,7 @@ export class SpecificationService {
     };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, userId: number) {
     const item = await this.prisma.openApiSpec.findUnique({
       where: { id },
     });
@@ -49,11 +51,15 @@ export class SpecificationService {
       throw new NotFoundException(`Specification ${id} not found`);
     }
 
+    if (item.userId !== userId) {
+      throw new ForbiddenException('You do not have access to this specification');
+    }
+
     return this.toResponse(item);
   }
 
-  async update(id: string, dto: UpdateSpecificationDto) {
-    await this.ensureExists(id);
+  async update(id: string, dto: UpdateSpecificationDto, userId: number) {
+    await this.ensureOwnership(id, userId);
 
     const existing = await this.prisma.openApiSpec.findUnique({ where: { id } });
 
@@ -71,8 +77,8 @@ export class SpecificationService {
     return this.toResponse(updated);
   }
 
-  async remove(id: string) {
-    await this.ensureExists(id);
+  async remove(id: string, userId: number) {
+    await this.ensureOwnership(id, userId);
 
     await this.prisma.openApiSpec.delete({
       where: { id },
@@ -90,68 +96,48 @@ export class SpecificationService {
 
     return existing;
   }
-/* 
-  private async parseAndSaveEndpoints(specId: string, content: string, fileName: string) {
+
+  private async ensureOwnership(id: string, userId: number) {
+    const existing = await this.ensureExists(id);
+
+    if (existing.userId !== userId) {
+      throw new ForbiddenException('You do not have access to this specification');
+    }
+
+    return existing;
+  }
+
+  private async parseAndSaveEndpoints(
+    specId: string,
+    content: string,
+    fileName: string,
+  ) {
     const parsed = this.parsingService.parse(content, fileName);
 
-    await this.prisma.endpoint.deleteMany({
-      where: { specId },
-    });
+    await this.prisma.endpoint.deleteMany({ where: { specId } });
 
-    if (parsed.endpoints.length > 0) {
-      await this.prisma.endpoint.createMany({
-        data: parsed.endpoints.map((endpoint) => ({
+    for (const ep of parsed.endpoints) {
+      await this.prisma.endpoint.create({
+        data: {
           specId,
-          path: endpoint.path,
-          method: endpoint.method,
-          summary: endpoint.summary,
-          responses: endpoint.responses,
-        })),
+          path: ep.path,
+          method: ep.method,
+          summary: ep.summary ?? null,
+          responses: {
+            description: ep.description ?? null,
+            operationId: ep.operationId ?? null,
+            tags: ep.tags,
+            parameters: JSON.parse(JSON.stringify(ep.parameters)),
+            requestBody: ep.requestBody
+              ? JSON.parse(JSON.stringify(ep.requestBody))
+              : null,
+            responses: JSON.parse(JSON.stringify(ep.responses)),
+          },
+        },
       });
     }
   }
- */
 
-  private async parseAndSaveEndpoints(
-  specId: string,
-  content: string,
-  fileName: string,
-) {
-  const parsed = this.parsingService.parse(content, fileName);
-
-  await this.prisma.endpoint.deleteMany({ where: { specId } });
-
-  for (const ep of parsed.endpoints) {
-    await this.prisma.endpoint.create({
-      data: {
-        specId,
-        path: ep.path,
-        method: ep.method,
-        summary: ep.summary ?? null,
-        // ← On stocke TOUT ici dans le champ Json?
-     /*    responses: {
-          description: ep.description ?? null,
-          operationId: ep.operationId ?? null,
-          tags: ep.tags,
-          parameters: ep.parameters,
-          requestBody: ep.requestBody ?? null,
-          responses: ep.responses,
-        }, */
-
-        responses: {
-  description: ep.description ?? null,
-  operationId: ep.operationId ?? null,
-  tags: ep.tags,
-  parameters: JSON.parse(JSON.stringify(ep.parameters)),
-  requestBody: ep.requestBody
-    ? JSON.parse(JSON.stringify(ep.requestBody))
-    : null,
-  responses: JSON.parse(JSON.stringify(ep.responses)),
-},
-      },
-    });
-  }
-}
   private toResponse(item: { id: string; name: string; filePath: string; content: string; createdAt: Date }) {
     const summary = this.summarizeContent(item.content);
     const fileFormat = this.resolveFormat(item.filePath);

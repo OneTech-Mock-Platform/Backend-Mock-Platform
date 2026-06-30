@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateScenarioDto } from './dto/create-scenario.dto';
 import { UpdateScenarioDto } from './dto/update-scenario.dto';
@@ -7,13 +7,19 @@ import { UpdateScenarioDto } from './dto/update-scenario.dto';
 export class ScenarioService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(dto: CreateScenarioDto) {
+  async create(dto: CreateScenarioDto, userId: number) {
+    // Verify the endpoint belongs to a spec owned by this user
     const endpoint = await this.prisma.endpoint.findUnique({
       where: { id: dto.endpointId },
+      include: { spec: true },
     });
 
     if (!endpoint) {
       throw new NotFoundException(`Endpoint ${dto.endpointId} not found`);
+    }
+
+    if (endpoint.spec.userId !== userId) {
+      throw new ForbiddenException('You do not have access to this endpoint');
     }
 
     const created = await this.prisma.scenario.create({
@@ -30,8 +36,15 @@ export class ScenarioService {
     return created;
   }
 
-  async findAll() {
+  async findAll(userId: number) {
     const items = await this.prisma.scenario.findMany({
+      where: {
+        endpoint: {
+          spec: {
+            userId: userId,
+          },
+        },
+      },
       include: {
         endpoint: true,
       },
@@ -41,11 +54,15 @@ export class ScenarioService {
     return { items };
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, userId: number) {
     const item = await this.prisma.scenario.findUnique({
       where: { id },
       include: {
-        endpoint: true,
+        endpoint: {
+          include: {
+            spec: true,
+          },
+        },
       },
     });
 
@@ -53,10 +70,28 @@ export class ScenarioService {
       throw new NotFoundException(`Scenario ${id} not found`);
     }
 
+    if (item.endpoint.spec.userId !== userId) {
+      throw new ForbiddenException('You do not have access to this scenario');
+    }
+
     return item;
   }
 
-  async findByEndpoint(endpointId: string) {
+  async findByEndpoint(endpointId: string, userId: number) {
+    // Verify the endpoint belongs to this user
+    const endpoint = await this.prisma.endpoint.findUnique({
+      where: { id: endpointId },
+      include: { spec: true },
+    });
+
+    if (!endpoint) {
+      throw new NotFoundException(`Endpoint ${endpointId} not found`);
+    }
+
+    if (endpoint.spec.userId !== userId) {
+      throw new ForbiddenException('You do not have access to this endpoint');
+    }
+
     const items = await this.prisma.scenario.findMany({
       where: { endpointId },
       include: {
@@ -68,8 +103,8 @@ export class ScenarioService {
     return { items };
   }
 
-  async update(id: string, dto: UpdateScenarioDto) {
-    await this.ensureExists(id);
+  async update(id: string, dto: UpdateScenarioDto, userId: number) {
+    await this.ensureOwnership(id, userId);
 
     const updated = await this.prisma.scenario.update({
       where: { id },
@@ -86,8 +121,8 @@ export class ScenarioService {
     return updated;
   }
 
-  async remove(id: string) {
-    await this.ensureExists(id);
+  async remove(id: string, userId: number) {
+    await this.ensureOwnership(id, userId);
 
     await this.prisma.scenario.delete({
       where: { id },
@@ -101,6 +136,22 @@ export class ScenarioService {
 
     if (!existing) {
       throw new NotFoundException(`Scenario ${id} not found`);
+    }
+
+    return existing;
+  }
+
+  private async ensureOwnership(id: string, userId: number) {
+    const existing = await this.ensureExists(id);
+
+    // Get the endpoint's spec to check ownership
+    const endpoint = await this.prisma.endpoint.findUnique({
+      where: { id: existing.endpointId },
+      include: { spec: true },
+    });
+
+    if (!endpoint || endpoint.spec.userId !== userId) {
+      throw new ForbiddenException('You do not have access to this scenario');
     }
 
     return existing;

@@ -1,39 +1,45 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, Request } from '@nestjs/common';
 import { ScenarioService } from './scenario.service';
 import { CreateScenarioDto } from './dto/create-scenario.dto';
 import { UpdateScenarioDto } from './dto/update-scenario.dto';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Controller('scenarios')
+@UseGuards(JwtAuthGuard)
 export class ScenarioController {
-  constructor(private readonly scenarioService: ScenarioService) {}
+  constructor(
+    private readonly scenarioService: ScenarioService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   @Post()
-  create(@Body() createScenarioDto: CreateScenarioDto) {
-    return this.scenarioService.create(createScenarioDto);
+  create(@Body() createScenarioDto: CreateScenarioDto, @Request() req: any) {
+    return this.scenarioService.create(createScenarioDto, req.user.id);
   }
 
   @Get()
-  findAll() {
-    return this.scenarioService.findAll();
+  findAll(@Request() req: any) {
+    return this.scenarioService.findAll(req.user.id);
   }
 
   @Get('endpoint/:endpointId')
-  findByEndpoint(@Param('endpointId') endpointId: string) {
-    return this.scenarioService.findByEndpoint(endpointId);
+  findByEndpoint(@Param('endpointId') endpointId: string, @Request() req: any) {
+    return this.scenarioService.findByEndpoint(endpointId, req.user.id);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.scenarioService.findOne(id);
+  findOne(@Param('id') id: string, @Request() req: any) {
+    return this.scenarioService.findOne(id, req.user.id);
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateScenarioDto: UpdateScenarioDto) {
-    return this.scenarioService.update(id, updateScenarioDto);
+  update(@Param('id') id: string, @Body() updateScenarioDto: UpdateScenarioDto, @Request() req: any) {
+    return this.scenarioService.update(id, updateScenarioDto, req.user.id);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.scenarioService.remove(id);
+  remove(@Param('id') id: string, @Request() req: any) {
+    return this.scenarioService.remove(id, req.user.id);
   }
 }
