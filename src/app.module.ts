@@ -8,9 +8,19 @@ import { ScenarioModule } from './scenario/scenario.module';
 import { MockDataModule } from './mock-data/mock-data.module';
 import { EndpointModule } from './endpoint/endpoint.module';
 import { AuthModule } from './auth/auth.module';
+import { ConfigModule } from '@nestjs/config';
+
 
 @Module({
-  imports: [PrismaModule, OpenApiMockModule, SpecificationModule, ScenarioModule, MockDataModule, EndpointModule, AuthModule],
+  imports: [ ConfigModule.forRoot({
+      isGlobal: true,
+      ignoreEnvFile: true,
+      
+    }),
+PrismaModule, OpenApiMockModule, 
+    SpecificationModule, ScenarioModule, 
+    MockDataModule, EndpointModule, 
+    AuthModule],
   controllers: [AppController],
   providers: [AppService],
 })

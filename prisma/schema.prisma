@@ -36,6 +36,7 @@ model User {
   password       String
   createdAt      DateTime      @default(now())
   specifications OpenApiSpec[]
+  passwordResets PasswordReset[]
 }
 
 model Scenario {
@@ -44,4 +45,18 @@ model Scenario {
   description String?
   endpointId  String
   endpoint    Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+}
+
+model PasswordReset {
+  id         String   @id @default(uuid())
+  userId     Int
+  otpHash    String
+  expiresAt  DateTime
+  verifiedAt DateTime?
+  consumedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

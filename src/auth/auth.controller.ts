@@ -4,6 +4,9 @@ import { JwtAuthGuard } from './jwt-auth.guard';
 import { CreateUserDto } from './dto/create-user.dto';
 import { LoginUserDto } from './dto/login-user.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { VerifyOtpDto } from './dto/verify-otp.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -17,6 +20,21 @@ export class AuthController {
   @Post('login')
   async login(@Body() dto: LoginUserDto) {
     return this.authService.login(dto);
+  }
+
+  @Post('forgot-password')
+  async forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(dto.email);
+  }
+
+  @Post('verify-otp')
+  async verifyOtp(@Body() dto: VerifyOtpDto) {
+    return this.authService.verifyResetOtp(dto.email, dto.otp);
+  }
+
+  @Post('reset-password')
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto.resetToken, dto.newPassword);
   }
 
   @UseGuards(JwtAuthGuard)
