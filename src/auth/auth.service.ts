@@ -1,12 +1,17 @@
-import { Injectable, ConflictException, UnauthorizedException, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import { randomInt } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { LoginUserDto } from './dto/login-user.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { EmailService } from './email.service';
-import { randomInt } from 'crypto';
 
 type ResetTokenPayload = {
   email: string;
@@ -14,6 +19,11 @@ type ResetTokenPayload = {
   purpose: 'password_reset';
 };
 
+type AuthUser = {
+  id: number;
+  name: string;
+  email: string;
+};
 
 @Injectable()
 export class AuthService {
@@ -35,13 +45,12 @@ export class AuthService {
     }).passwordReset;
   }
 
-  private generateToken(user: { email: string }) {
-    const payload = { email: user.email };
-    return this.jwtService.sign(payload);
-  }
-
   private normalizeEmail(email: string) {
     return email.trim().toLowerCase();
+  }
+
+  private generateToken(user: { email: string }) {
+    return this.jwtService.sign({ email: user.email });
   }
 
   private generateResetToken(payload: ResetTokenPayload) {
@@ -61,9 +70,44 @@ export class AuthService {
     }
   }
 
+  private async createOtpCode(
+    userId: number,
+    purpose: 'password_reset' | 'login_2fa',
+    otp: string,
+  ) {
+    const otpHash = await bcrypt.hash(otp, 10);
+    const expiresAt = new Date(Date.now() + (purpose === 'login_2fa' ? 10 : 15) * 60 * 1000);
+
+    await this.passwordResetModel.deleteMany({
+      where: {
+        userId,
+        purpose,
+        consumedAt: null,
+      },
+    });
+
+    return this.passwordResetModel.create({
+      data: {
+        userId,
+        purpose,
+        otpHash,
+        expiresAt,
+      },
+    });
+  }
+
+  private sanitizeUser(user: AuthUser) {
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+    };
+  }
+
   async register(dto: CreateUserDto) {
     const email = this.normalizeEmail(dto.email);
     const existing = await this.prisma.user.findUnique({ where: { email } });
+
     if (existing) {
       throw new ConflictException('Cet email est déjà utilisé');
     }
@@ -80,13 +124,14 @@ export class AuthService {
     const access_token = this.generateToken(user);
     return {
       access_token,
-      user: { id: user.id, name: user.name, email: user.email },
+      user: this.sanitizeUser(user),
     };
   }
 
   async login(dto: LoginUserDto) {
     const email = this.normalizeEmail(dto.email);
     const user = await this.prisma.user.findUnique({ where: { email } });
+
     if (!user) {
       throw new UnauthorizedException('Email ou mot de passe incorrect');
     }
@@ -96,32 +141,74 @@ export class AuthService {
       throw new UnauthorizedException('Email ou mot de passe incorrect');
     }
 
+    const otp = randomInt(100000, 999999).toString();
+    await this.createOtpCode(user.id, 'login_2fa', otp);
+    await this.emailService.sendLoginOtpEmail(user.email, otp);
+
+    return {
+      requiresVerification: true,
+      email: user.email,
+      message: 'Un code de vérification a été envoyé à votre adresse e-mail.',
+    };
+  }
+
+  async verifyLoginOtp(email: string, otp: string) {
+    const normalizedEmail = this.normalizeEmail(email);
+    const user = await this.prisma.user.findUnique({ where: { email: normalizedEmail } });
+
+    if (!user) {
+      throw new UnauthorizedException('Code de vérification invalide ou expiré');
+    }
+
+    const record = (await this.passwordResetModel.findFirst({
+      where: {
+        userId: user.id,
+        purpose: 'login_2fa',
+        consumedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { createdAt: 'desc' },
+    })) as any;
+
+    if (!record) {
+      throw new UnauthorizedException('Code de vérification invalide ou expiré');
+    }
+
+    const isValid = await bcrypt.compare(otp, record.otpHash);
+    if (!isValid) {
+      throw new UnauthorizedException('Code de vérification invalide ou expiré');
+    }
+
+    await this.passwordResetModel.update({
+      where: { id: record.id },
+      data: {
+        verifiedAt: new Date(),
+        consumedAt: new Date(),
+      },
+    });
+
     const access_token = this.generateToken(user);
+
     return {
       access_token,
-      user: { id: user.id, name: user.name, email: user.email },
+      user: this.sanitizeUser(user),
+      message: 'Connexion validée avec succès.',
     };
   }
 
   async updateProfile(userId: number, dto: UpdateProfileDto) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
+
     if (!user) {
       throw new NotFoundException('Utilisateur non trouvé');
     }
 
-    // Vérifier le mot de passe actuel si on veut changer le mot de passe
-    /*if (dto.currentPassword && dto.newPassword) {
-      const isMatch = await bcrypt.compare(dto.currentPassword, user.password);
-      if (!isMatch) {
-        throw new UnauthorizedException('Mot de passe actuel incorrect');
-      }
-    }*/
+    const updateData: { name?: string; password?: string } = {};
 
-    // Préparer les données à mettre à jour
-    const updateData: any = {};
     if (dto.name) {
       updateData.name = dto.name;
     }
+
     if (dto.newPassword) {
       updateData.password = await bcrypt.hash(dto.newPassword, 10);
     }
@@ -131,13 +218,8 @@ export class AuthService {
       data: updateData,
     });
 
-    return {
-      id: updatedUser.id,
-      name: updatedUser.name,
-      email: updatedUser.email,
-    };
+    return this.sanitizeUser(updatedUser);
   }
-
 
   async forgotPassword(email: string) {
     const normalizedEmail = this.normalizeEmail(email);
@@ -147,25 +229,21 @@ export class AuthService {
 
     if (user) {
       await this.passwordResetModel.deleteMany({
-        where: { userId: user.id, consumedAt: null },
-      });
-
-      const otp = randomInt(100000, 999999).toString();
-      const otpHash = await bcrypt.hash(otp, 10);
-      const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 mins
-
-      await this.passwordResetModel.create({
-        data: {
+        where: {
           userId: user.id,
-          otpHash,
-          expiresAt,
+          purpose: 'password_reset',
+          consumedAt: null,
         },
       });
 
+      const otp = randomInt(100000, 999999).toString();
+      await this.createOtpCode(user.id, 'password_reset', otp);
       await this.emailService.sendPasswordResetEmail(user.email, otp);
     }
 
-    return { message: 'Si un compte existe, vous recevrez un code de réinitialisation par e-mail.' };
+    return {
+      message: 'Si un compte existe, vous recevrez un code de réinitialisation par e-mail.',
+    };
   }
 
   async verifyResetOtp(email: string, otp: string) {
@@ -178,15 +256,16 @@ export class AuthService {
       throw new UnauthorizedException('Code invalide ou expiré');
     }
 
-    const resetRequest = await this.passwordResetModel.findFirst({
+    const resetRequest = (await this.passwordResetModel.findFirst({
       where: {
         userId: user.id,
+        purpose: 'password_reset',
         consumedAt: null,
         expiresAt: { gt: new Date() },
         verifiedAt: null,
       },
       orderBy: { createdAt: 'desc' },
-    });
+    })) as any;
 
     if (!resetRequest) {
       throw new UnauthorizedException('Code invalide ou expiré');
@@ -215,12 +294,13 @@ export class AuthService {
   async resetPassword(resetToken: string, newPassword: string) {
     const payload = await this.verifyResetToken(resetToken);
 
-    const resetRequest = await this.passwordResetModel.findUnique({
+    const resetRequest = (await this.passwordResetModel.findUnique({
       where: { id: payload.resetId },
-    });
+    })) as any;
 
     if (
       !resetRequest ||
+      resetRequest.purpose !== 'password_reset' ||
       resetRequest.consumedAt ||
       resetRequest.verifiedAt === null ||
       resetRequest.expiresAt <= new Date()
@@ -250,6 +330,7 @@ export class AuthService {
       this.passwordResetModel.deleteMany({
         where: {
           userId: user.id,
+          purpose: 'password_reset',
           id: { not: resetRequest.id },
         },
       }),
@@ -257,6 +338,4 @@ export class AuthService {
 
     return { message: 'Mot de passe réinitialisé avec succès.' };
   }
-
-
 }

@@ -50,6 +50,7 @@ model Scenario {
 model PasswordReset {
   id         String   @id @default(uuid())
   userId     Int
+  purpose    String   @default("password_reset")
   otpHash    String
   expiresAt  DateTime
   verifiedAt DateTime?

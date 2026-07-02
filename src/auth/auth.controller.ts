@@ -1,5 +1,5 @@
 import { Controller, Post, Get, Put, Body, UseGuards, Request } from '@nestjs/common';
-import { AuthService } from './auth.service';
+import { AuthService } from './auth.service.js';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { CreateUserDto } from './dto/create-user.dto';
 import { LoginUserDto } from './dto/login-user.dto';
@@ -7,6 +7,7 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { VerifyLoginDto } from './dto/verify-login.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -47,5 +48,16 @@ export class AuthController {
   @Put('profile')
   async updateProfile(@Request() req: any, @Body() dto: UpdateProfileDto) {
     return this.authService.updateProfile(req.user.id, dto);
+  }
+
+  
+  @Post('verify-login')
+  async verifyLogin(
+    @Body() body: VerifyLoginDto,
+  ) {
+    return this.authService.verifyLoginOtp(
+      body.email,
+      body.otp,
+    );
   }
 }
