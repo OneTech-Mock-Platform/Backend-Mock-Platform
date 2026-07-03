@@ -43,9 +43,12 @@ model Scenario {
   id          String   @id @default(uuid())
   statusCode  Int
   description String?
+  name        String?                   
+  isDefault   Boolean  @default(false)   
   endpointId  String
   endpoint    Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
 }
+
 
 model PasswordReset {
   id         String   @id @default(uuid())

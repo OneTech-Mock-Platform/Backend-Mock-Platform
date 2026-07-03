@@ -54,7 +54,6 @@ export class EmailService {
           <h1 style="margin:0 0 16px; font-size:26px; line-height:1.2;">${params.title}</h1>
           <p style="margin:0 0 24px; color:#cbd5e1; line-height:1.6;">${params.intro}</p>
           <div style="display:inline-block; padding:16px 28px; border-radius:16px; background:#f7941d; color:#ffffff; font-size:28px; font-weight:700; letter-spacing:0.2em;">${params.otp}</div>
-          <p style="margin:12px 0 0; color:#94a3b8; line-height:1.6;">Ce code expire dans ${params.expiry}.</p>
           <p style="margin:8px 0 0; color:#94a3b8; line-height:1.6;">${params.warning}</p>
         </div>
       </div>
