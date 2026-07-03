@@ -27,7 +27,7 @@ export class SpecificationService {
     });
 
     await this.parseAndSaveEndpoints(created.id, dto.content, dto.fileName!);
-
+    await this.generateScenarios(created.id)  // on a ajouté cette ligne pour générer les scénarios après la création de la spécification
     return this.toResponse(created);
   }
 
@@ -73,7 +73,7 @@ export class SpecificationService {
     });
 
     await this.parseAndSaveEndpoints(updated.id, updated.content, updated.filePath);
-
+    await this.generateScenarios(updated.id); // on a ajouté cette ligne pour générer les scénarios après la mise à jour de la spécification
     return this.toResponse(updated);
   }
 
@@ -174,4 +174,38 @@ export class SpecificationService {
       operationCount,
     };
   }
+
+
+// Ajouter cette méthode privée
+private async generateScenarios(specId: string) {
+  const endpoints = await this.prisma.endpoint.findMany({
+    where: { specId },
+  })
+
+  for (const endpoint of endpoints) {
+    await this.prisma.scenario.deleteMany({
+      where: { endpointId: endpoint.id },
+    })
+
+    const details = endpoint.responses as {
+      responses?: { statusCode: string; description: string }[]
+    } | null
+
+    const responses = details?.responses ?? []
+    const successCodes = ['200', '201', '202']
+
+    for (const response of responses) {
+      await this.prisma.scenario.create({
+        data: {
+          statusCode: parseInt(response.statusCode, 10),
+          description: response.description ?? '',
+          name: `${endpoint.method} ${endpoint.path} — ${response.statusCode}`,
+          isDefault: successCodes.includes(response.statusCode),
+          endpointId: endpoint.id,
+        },
+      })
+    }
+  }
+}
+  
 }

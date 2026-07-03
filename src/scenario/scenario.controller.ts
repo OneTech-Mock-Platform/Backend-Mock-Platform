@@ -23,11 +23,21 @@ export class ScenarioController {
     return this.scenarioService.findAll(req.user.id);
   }
 
-  @Get('endpoint/:endpointId')
+  /*@Get('endpoint/:endpointId')
   findByEndpoint(@Param('endpointId') endpointId: string, @Request() req: any) {
     return this.scenarioService.findByEndpoint(endpointId, req.user.id);
   }
+*/
 
+ // Route principale : scénarios d'un endpoint
+  @Get('endpoint/:endpointId')
+  async findByEndpoint(@Param('endpointId') endpointId: string) {
+    return this.prisma.scenario.findMany({
+      where: { endpointId },
+      orderBy: { statusCode: 'asc' },
+    })
+  }
+  
   @Get(':id')
   findOne(@Param('id') id: string, @Request() req: any) {
     return this.scenarioService.findOne(id, req.user.id);
