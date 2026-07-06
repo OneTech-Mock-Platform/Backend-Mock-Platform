@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ParsingService } from '../parsing/parsing.service';
+import { MockDataService } from '../mock-data/mock-data.service';
 import { CreateSpecificationDto } from './dto/create-specification.dto';
 import { UpdateSpecificationDto } from './dto/update-specification.dto';
 
@@ -14,6 +15,7 @@ export class SpecificationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly parsingService: ParsingService,
+    private readonly mockDataService: MockDataService,  // ← ajouter
   ) {}
 
   async create(dto: CreateSpecificationDto, userId: number) {
@@ -27,7 +29,7 @@ export class SpecificationService {
     });
 
     await this.parseAndSaveEndpoints(created.id, dto.content, dto.fileName!);
-    await this.generateScenarios(created.id)  // on a ajouté cette ligne pour générer les scénarios après la création de la spécification
+    await this.generateScenarios(created.id);
     return this.toResponse(created);
   }
 
@@ -73,7 +75,7 @@ export class SpecificationService {
     });
 
     await this.parseAndSaveEndpoints(updated.id, updated.content, updated.filePath);
-    await this.generateScenarios(updated.id); // on a ajouté cette ligne pour générer les scénarios après la mise à jour de la spécification
+    await this.generateScenarios(updated.id);
     return this.toResponse(updated);
   }
 
@@ -112,7 +114,8 @@ export class SpecificationService {
     content: string,
     fileName: string,
   ) {
-    const parsed = this.parsingService.parse(content, fileName);
+    // ← await car parse() est maintenant async
+    const parsed = await this.parsingService.parse(content, fileName);
 
     await this.prisma.endpoint.deleteMany({ where: { specId } });
 
@@ -175,37 +178,46 @@ export class SpecificationService {
     };
   }
 
+  // Ajouter cette méthode privée
+  private async generateScenarios(specId: string) {
+    const endpoints = await this.prisma.endpoint.findMany({
+      where: { specId },
+    });
 
-// Ajouter cette méthode privée
-private async generateScenarios(specId: string) {
-  const endpoints = await this.prisma.endpoint.findMany({
-    where: { specId },
-  })
+    for (const endpoint of endpoints) {
+      await this.prisma.scenario.deleteMany({
+        where: { endpointId: endpoint.id },
+      });
 
-  for (const endpoint of endpoints) {
-    await this.prisma.scenario.deleteMany({
-      where: { endpointId: endpoint.id },
-    })
+      const details = endpoint.responses as {
+        responses?: {
+          statusCode: string;
+          description: string;
+          schema?: any;
+        }[]
+      } | null;
 
-    const details = endpoint.responses as {
-      responses?: { statusCode: string; description: string }[]
-    } | null
+      const responses = details?.responses ?? [];
+      const successCodes = ['200', '201', '202'];
 
-    const responses = details?.responses ?? []
-    const successCodes = ['200', '201', '202']
+      for (const response of responses) {
+        // ← Générer les mock data depuis le schéma résolu
+        const mockData = response.schema
+          ? this.mockDataService.generate(response.schema)
+          : null;
 
-    for (const response of responses) {
-      await this.prisma.scenario.create({
-        data: {
-          statusCode: parseInt(response.statusCode, 10),
-          description: response.description ?? '',
-          name: `${endpoint.method} ${endpoint.path} — ${response.statusCode}`,
-          isDefault: successCodes.includes(response.statusCode),
-          endpointId: endpoint.id,
-        },
-      })
+        await this.prisma.scenario.create({
+          data: {
+            statusCode: parseInt(response.statusCode, 10),
+            description: response.description ?? '',
+            name: `${endpoint.method} ${endpoint.path} — ${response.statusCode}`,
+            isDefault: successCodes.includes(response.statusCode),
+            // ← Stocker les données mock générées
+            mockContent: mockData ? JSON.stringify(mockData, null, 2) : null,
+            endpointId: endpoint.id,
+          },
+        });
+      }
     }
   }
-}
-  
 }

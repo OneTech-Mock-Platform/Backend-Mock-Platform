@@ -1,111 +1,77 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
-import { GenerateMockDataDto } from './dto/mock-data.dto';
+import { Injectable } from '@nestjs/common';
 
 @Injectable()
 export class MockDataService {
-  generate(schema: Record<string, unknown>, count = 1): Record<string, unknown>[] {
-    if (count < 1 || count > 100) {
-      throw new BadRequestException('Count must be between 1 and 100');
-    }
 
-    const results: Record<string, unknown>[] = [];
+  generate(schema: any, depth = 0): unknown {
+    if (!schema || depth > 6) return null;
 
-    for (let i = 0; i < count; i++) {
-      results.push(this.generateFromSchema(schema));
-    }
+    if (schema.example !== undefined) return schema.example;
 
-    return results;
-  }
+    if (schema.enum) return schema.enum[0];
 
-  private generateFromSchema(schema: Record<string, unknown>): Record<string, unknown> {
-    const type = schema.type as string | undefined;
-    const properties = schema.properties as Record<string, unknown> | undefined;
-    const required = (schema.required as string[]) || [];
-
-    if (type === 'object' && properties) {
-      const result: Record<string, unknown> = {};
-
-      for (const [key, propSchema] of Object.entries(properties)) {
-        const propSchemaObj = propSchema as Record<string, unknown>;
-        result[key] = this.generateFromSchema(propSchemaObj);
-      }
-
-      return result;
-    }
-
-    if (type === 'array') {
-      const items = schema.items as Record<string, unknown> | undefined;
-      const minItems = (schema.minItems as number) || 1;
-      const maxItems = (schema.maxItems as number) || 3;
-      const length = Math.floor(Math.random() * (maxItems - minItems + 1)) + minItems;
-
-      return {
-        type: 'array',
-        items: Array.from({ length }, () => this.generateFromSchema(items || {})),
-      };
-    }
-
-    if (schema.$ref) {
-      return this.generateFromSchema({ type: 'string' });
-    }
-
-    return this.generatePrimitiveValue(schema);
-  }
-
-  private generatePrimitiveValue(schema: Record<string, unknown>): Record<string, unknown> {
-    const type = schema.type as string | undefined;
-
-    switch (type) {
-      case 'string': {
-        const value = this.generateString(schema);
-        return { type: 'string', value };
-      }
-      case 'integer':
-      case 'number': {
-        const value = this.generateNumber(schema);
-        return { type: 'number', value };
-      }
-      case 'boolean': {
-        const value = Math.random() > 0.5;
-        return { type: 'boolean', value };
-      }
+    switch (schema.type) {
+      case 'string':  return this.generateString(schema);
+      case 'integer': return this.generateInteger(schema);
+      case 'number':  return this.generateNumber(schema);
+      case 'boolean': return true;
+      case 'array':   return this.generateArray(schema, depth);
+      case 'object':  return this.generateObject(schema, depth);
       default:
-        return { type: 'string', value: this.generateString(schema) };
+        // Pas de type → essayer object si properties existe
+        if (schema.properties) return this.generateObject(schema, depth);
+        return null;
     }
   }
 
-  private generateString(schema: Record<string, unknown>): string {
-    const format = schema.format as string | undefined;
-    const enumValues = schema.enum as string[] | undefined;
-
-    if (enumValues && enumValues.length > 0) {
-      return enumValues[Math.floor(Math.random() * enumValues.length)];
+  private generateString(schema: any): string {
+    // Heuristique sur le nom du format
+    switch (schema.format) {
+      case 'date':      return '2024-06-15';
+      case 'date-time': return '2024-06-15T10:30:00Z';
+      case 'email':     return 'user@example.com';
+      case 'uuid':      return 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
+      case 'uri':       return 'https://example.com';
+      case 'iban':      return 'TN5910006035188298755016';
+      case 'phone':     return '+21612345678';
+      default:          break;
     }
 
-    switch (format) {
-      case 'email':
-        return `user${Math.floor(Math.random() * 1000)}@example.com`;
-      case 'uuid':
-        return crypto.randomUUID();
-      case 'date':
-        return new Date(Date.now() - Math.floor(Math.random() * 10000000000)).toISOString().split('T')[0];
-      case 'date-time':
-        return new Date(Date.now() - Math.floor(Math.random() * 10000000000)).toISOString();
-      default:
-        return `sample-${Math.random().toString(36).substring(7)}`;
-    }
+    // Heuristique sur les valeurs possibles communes
+    if (schema.minLength) return 'A'.repeat(schema.minLength);
+
+    return 'string_value';
   }
 
-  private generateNumber(schema: Record<string, unknown>): number {
-    const minimum = schema.minimum as number | undefined;
-    const maximum = schema.maximum as number | undefined;
-    const min = minimum ?? 0;
-    const max = maximum ?? 1000;
-
-    if (schema.type === 'integer') {
-      return Math.floor(Math.random() * (max - min + 1)) + min;
+  private generateInteger(schema: any): number {
+    if (schema.minimum !== undefined && schema.maximum !== undefined) {
+      return Math.floor((schema.minimum + schema.maximum) / 2);
     }
+    return schema.minimum ?? 1;
+  }
 
-    return Math.random() * (max - min) + min;
+  private generateNumber(schema: any): number {
+    if (schema.minimum !== undefined && schema.maximum !== undefined) {
+      return (schema.minimum + schema.maximum) / 2;
+    }
+    return schema.minimum ?? 1.0;
+  }
+
+  private generateArray(schema: any, depth: number): unknown[] {
+    if (!schema.items) return [];
+    return [
+      this.generate(schema.items, depth + 1),
+      this.generate(schema.items, depth + 1),
+    ];
+  }
+
+  private generateObject(schema: any, depth: number): Record<string, unknown> {
+    const result: Record<string, unknown> = {};
+    if (!schema.properties) return result;
+
+    for (const [key, prop] of Object.entries(schema.properties as Record<string, any>)) {
+      result[key] = this.generate(prop, depth + 1);
+    }
+    return result;
   }
 }

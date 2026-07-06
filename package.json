@@ -23,6 +23,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
+    "@apidevtools/swagger-parser": "^12.1.0",
     "@getbrevo/brevo": "^5.0.4",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.4",
@@ -56,6 +57,7 @@
     "@types/passport-jwt": "^4.0.1",
     "@types/pg": "^8.15.4",
     "@types/supertest": "^6.0.2",
+    "@types/swagger-parser": "^4.0.3",
     "dotenv": "^17.2.1",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",

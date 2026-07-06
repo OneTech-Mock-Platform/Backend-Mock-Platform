@@ -13,7 +13,6 @@ export class EndpointController {
 
   @Get('specification/:specId')
   async findBySpecification(@Param('specId') specId: string, @Request() req: any) {
-    // Verify the user owns this specification
     await this.specificationService.findOne(specId, req.user.id);
 
     const endpoints = await this.prisma.endpoint.findMany({

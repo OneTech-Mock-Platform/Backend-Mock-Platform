@@ -8,7 +8,6 @@ export class ScenarioService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: CreateScenarioDto, userId: number) {
-    // Verify the endpoint belongs to a spec owned by this user
     const endpoint = await this.prisma.endpoint.findUnique({
       where: { id: dto.endpointId },
       include: { spec: true },
@@ -78,7 +77,6 @@ export class ScenarioService {
   }
 
   async findByEndpoint(endpointId: string, userId: number) {
-    // Verify the endpoint belongs to this user
     const endpoint = await this.prisma.endpoint.findUnique({
       where: { id: endpointId },
       include: { spec: true },
@@ -144,7 +142,6 @@ export class ScenarioService {
   private async ensureOwnership(id: string, userId: number) {
     const existing = await this.ensureExists(id);
 
-    // Get the endpoint's spec to check ownership
     const endpoint = await this.prisma.endpoint.findUnique({
       where: { id: existing.endpointId },
       include: { spec: true },

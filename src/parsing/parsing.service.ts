@@ -1,83 +1,6 @@
-/* import { Injectable, BadRequestException } from '@nestjs/common';
-import * as yaml from 'js-yaml';
-import { ParsedSpec, ParsedEndpoint } from './dto/parsed-spec.dto';
-
-@Injectable()
-export class ParsingService {
-  parse(content: string, fileName: string): ParsedSpec {
-    const format = this.resolveFormat(fileName);
-    let document: Record<string, unknown>;
-
-    try {
-      if (format === 'json') {
-        document = JSON.parse(content);
-      } else {
-        document = yaml.load(content) as Record<string, unknown>;
-      }
-    } catch (error) {
-      throw new BadRequestException('Invalid OpenAPI file format');
-    }
-
-    const openapi = (document.openapi || document.swagger || '3.0.0') as string;
-    const info = (document.info || {}) as ParsedSpec['info'];
-    const paths = (document.paths || {}) as Record<string, Record<string, unknown>>;
-    const components = document.components as Record<string, unknown> | undefined;
-
-    const endpoints = this.extractEndpoints(paths);
-
-    return {
-      openapi,
-      info: {
-        title: info.title || 'Untitled API',
-        version: info.version || '1.0.0',
-        description: info.description as string | undefined,
-      },
-      paths,
-      components,
-      endpoints,
-    };
-  }
-
-  private extractEndpoints(paths: Record<string, Record<string, unknown>>): ParsedEndpoint[] {
-    const endpoints: ParsedEndpoint[] = [];
-    const methods = ['get', 'post', 'put', 'delete', 'patch', 'options', 'head', 'trace'];
-
-    for (const [path, pathItem] of Object.entries(paths)) {
-      for (const method of methods) {
-        const operation = (pathItem as Record<string, unknown>)[method] as Record<string, unknown> | undefined;
-
-        if (operation) {
-          const responses = operation.responses as Record<string, unknown> | undefined;
-          const responseCodes = responses ? Object.keys(responses) : [];
-
-          endpoints.push({
-            path,
-            method: method.toUpperCase(),
-            summary: operation.summary as string | undefined,
-            operationId: operation.operationId as string | undefined,
-            responses: responseCodes,
-          });
-        }
-      }
-    }
-
-    return endpoints;
-  }
-
-  private resolveFormat(fileName: string): 'json' | 'yaml' {
-    const extension = fileName.split('.').pop()?.toLowerCase();
-
-    if (extension === 'yaml' || extension === 'yml') {
-      return 'yaml';
-    }
-
-    return 'json';
-  }
-} */
-
-
 import { Injectable, BadRequestException } from '@nestjs/common';
 import * as yaml from 'js-yaml';
+import SwaggerParser from '@apidevtools/swagger-parser';
 import {
   ParsedSpec,
   ParsedEndpoint,
@@ -88,38 +11,39 @@ import {
 
 @Injectable()
 export class ParsingService {
-  parse(content: string, fileName: string): ParsedSpec {
+  async parse(content: string, fileName: string): Promise<ParsedSpec> {
     const format = this.resolveFormat(fileName);
-    let document: Record<string, unknown>;
+    let raw: unknown;
 
     try {
       if (format === 'json') {
-        document = JSON.parse(content);
+        raw = JSON.parse(content);
       } else {
-        document = yaml.load(content) as Record<string, unknown>;
+        raw = yaml.load(content);
       }
     } catch {
       throw new BadRequestException('Invalid OpenAPI file format');
     }
 
-    const openapi = (document.openapi || document.swagger || '3.0.0') as string;
-    const info = (document.info || {}) as ParsedSpec['info'];
-    const paths = (document.paths || {}) as Record<string, Record<string, unknown>>;
-    const components = document.components as Record<string, unknown> | undefined;
+    try {
+      const resolved = (await SwaggerParser.dereference(raw as never)) as any;
 
-    const endpoints = this.extractEndpoints(paths);
+      const endpoints = this.extractEndpoints(resolved.paths ?? {});
 
-    return {
-      openapi,
-      info: {
-        title: info.title || 'Untitled API',
-        version: info.version || '1.0.0',
-        description: info.description,
-      },
-      paths,
-      components,
-      endpoints,
-    };
+      return {
+        openapi: resolved.openapi ?? '3.0.0',
+        info: {
+          title: resolved.info?.title ?? 'Untitled',
+          version: resolved.info?.version ?? '1.0.0',
+          description: resolved.info?.description,
+        },
+        paths: resolved.paths ?? {},
+        components: resolved.components,
+        endpoints,
+      };
+    } catch (err) {
+      throw new BadRequestException(`Parsing failed: ${(err as Error).message}`);
+    }
   }
 
   private extractEndpoints(
@@ -160,7 +84,7 @@ export class ParsingService {
           };
         }
 
-        // ── Réponses ──
+        // ── Réponses avec schémas résolus ──
         const responsesRaw = (op.responses as Record<string, any>) ?? {};
         const responses: ParsedResponse[] = Object.entries(responsesRaw).map(
           ([code, res]) => {
