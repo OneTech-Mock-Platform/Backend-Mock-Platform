@@ -45,7 +45,10 @@ model Scenario {
   description String?
   name        String?                   
   isDefault   Boolean  @default(false)   
-  mockContent String?   // ← ajouter
+  mockContent String?
+  contentType String?
+  headers     Json?
+  delayMs     Int      @default(0)
   endpointId  String
   endpoint    Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
 }
