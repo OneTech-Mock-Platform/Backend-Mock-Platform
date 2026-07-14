@@ -15,7 +15,7 @@ export class SpecificationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly parsingService: ParsingService,
-    private readonly mockDataService: MockDataService,  // ← ajouter
+    private readonly mockDataService: MockDataService, 
   ) {}
 
   async create(dto: CreateSpecificationDto, userId: number) {
@@ -114,7 +114,7 @@ export class SpecificationService {
     content: string,
     fileName: string,
   ) {
-    // ← await car parse() est maintenant async
+   
     const parsed = await this.parsingService.parse(content, fileName);
 
     await this.prisma.endpoint.deleteMany({ where: { specId } });
@@ -178,7 +178,7 @@ export class SpecificationService {
     };
   }
 
-  // Ajouter cette méthode privée
+
   private async generateScenarios(specId: string) {
     const endpoints = await this.prisma.endpoint.findMany({
       where: { specId },
@@ -201,7 +201,7 @@ export class SpecificationService {
       const successCodes = ['200', '201', '202'];
 
       for (const response of responses) {
-        // ← Générer les mock data depuis le schéma résolu
+      
         const mockData = response.schema
           ? this.mockDataService.generate(response.schema)
           : null;
@@ -212,7 +212,7 @@ export class SpecificationService {
             description: response.description ?? '',
             name: `${endpoint.method} ${endpoint.path} — ${response.statusCode}`,
             isDefault: successCodes.includes(response.statusCode),
-            // ← Stocker les données mock générées
+        
             mockContent: mockData ? JSON.stringify(mockData, null, 2) : null,
             endpointId: endpoint.id,
           },

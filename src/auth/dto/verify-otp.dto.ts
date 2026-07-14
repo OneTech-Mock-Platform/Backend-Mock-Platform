@@ -1,10 +1,10 @@
 import { IsEmail, IsNotEmpty, Length } from 'class-validator';
 
 export class VerifyOtpDto {
-  @IsEmail()
+  @IsEmail({}, { message: 'Adresse e-mail invalide' })
   email!: string;
 
-  @IsNotEmpty()
-  @Length(6, 6)
+  @IsNotEmpty({ message: 'Le code de réinitialisation est requis' })
+  @Length(6, 6, { message: 'Le code de réinitialisation doit contenir 6 chiffres' })
   otp!: string;
 }

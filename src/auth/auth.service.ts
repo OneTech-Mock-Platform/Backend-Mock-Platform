@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -106,6 +107,11 @@ export class AuthService {
 
   async register(dto: CreateUserDto) {
     const email = this.normalizeEmail(dto.email);
+
+    if (dto.password !== dto.confirmPassword) {
+      throw new BadRequestException('Les mots de passe ne correspondent pas');
+    }
+
     const existing = await this.prisma.user.findUnique({ where: { email } });
 
     if (existing) {

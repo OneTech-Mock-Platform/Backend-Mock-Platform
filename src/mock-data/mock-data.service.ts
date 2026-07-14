@@ -18,7 +18,7 @@ export class MockDataService {
       case 'array':   return this.generateArray(schema, depth);
       case 'object':  return this.generateObject(schema, depth);
       default:
-        // Pas de type → essayer object si properties existe
+    
         if (schema.properties) return this.generateObject(schema, depth);
         return null;
     }
