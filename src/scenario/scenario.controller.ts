@@ -3,15 +3,11 @@ import { ScenarioService } from './scenario.service';
 import { CreateScenarioDto } from './dto/create-scenario.dto';
 import { UpdateScenarioDto } from './dto/update-scenario.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { PrismaService } from '../prisma/prisma.service';
 
 @Controller('scenarios')
 @UseGuards(JwtAuthGuard)
 export class ScenarioController {
-  constructor(
-    private readonly scenarioService: ScenarioService,
-    private readonly prisma: PrismaService,
-  ) {}
+  constructor(private readonly scenarioService: ScenarioService) {}
 
   @Post()
   create(@Body() createScenarioDto: CreateScenarioDto, @Request() req: any) {
@@ -23,19 +19,10 @@ export class ScenarioController {
     return this.scenarioService.findAll(req.user.id);
   }
 
-  /*@Get('endpoint/:endpointId')
-  findByEndpoint(@Param('endpointId') endpointId: string, @Request() req: any) {
-    return this.scenarioService.findByEndpoint(endpointId, req.user.id);
-  }
-*/
-
  // Route principale : scénarios d'un endpoint
   @Get('endpoint/:endpointId')
-  async findByEndpoint(@Param('endpointId') endpointId: string) {
-    return this.prisma.scenario.findMany({
-      where: { endpointId },
-      orderBy: { statusCode: 'asc' },
-    })
+  async findByEndpoint(@Param('endpointId') endpointId: string, @Request() req: any) {
+    return this.scenarioService.findByEndpoint(endpointId, req.user.id);
   }
   
   @Get(':id')
