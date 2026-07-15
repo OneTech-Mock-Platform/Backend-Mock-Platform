@@ -27,6 +27,8 @@ model Endpoint {
   specId     String
   spec       OpenApiSpec @relation(fields: [specId], references: [id], onDelete: Cascade)
   scenarios  Scenario[]
+
+  @@unique([specId, path, method])
 }
 
 model User {

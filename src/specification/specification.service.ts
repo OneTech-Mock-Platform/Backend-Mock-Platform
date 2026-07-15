@@ -114,30 +114,58 @@ export class SpecificationService {
     content: string,
     fileName: string,
   ) {
-   
+
     const parsed = await this.parsingService.parse(content, fileName);
 
-    await this.prisma.endpoint.deleteMany({ where: { specId } });
+    const existingEndpoints = await this.prisma.endpoint.findMany({ where: { specId } });
+    const existingByKey = new Map(
+      existingEndpoints.map((e) => [`${e.path}::${e.method}`, e]),
+    );
+    const seenKeys = new Set<string>();
 
     for (const ep of parsed.endpoints) {
-      await this.prisma.endpoint.create({
-        data: {
-          specId,
-          path: ep.path,
-          method: ep.method,
-          summary: ep.summary ?? null,
-          responses: {
-            description: ep.description ?? null,
-            operationId: ep.operationId ?? null,
-            tags: ep.tags,
-            parameters: JSON.parse(JSON.stringify(ep.parameters)),
-            requestBody: ep.requestBody
-              ? JSON.parse(JSON.stringify(ep.requestBody))
-              : null,
-            responses: JSON.parse(JSON.stringify(ep.responses)),
+      const key = `${ep.path}::${ep.method}`;
+      seenKeys.add(key);
+
+      const responsesData = {
+        description: ep.description ?? null,
+        operationId: ep.operationId ?? null,
+        tags: ep.tags,
+        parameters: JSON.parse(JSON.stringify(ep.parameters)),
+        requestBody: ep.requestBody
+          ? JSON.parse(JSON.stringify(ep.requestBody))
+          : null,
+        responses: JSON.parse(JSON.stringify(ep.responses)),
+      };
+
+      const existing = existingByKey.get(key);
+      if (existing) {
+        await this.prisma.endpoint.update({
+          where: { id: existing.id },
+          data: {
+            summary: ep.summary ?? null,
+            responses: responsesData,
           },
-        },
-      });
+        });
+      } else {
+        await this.prisma.endpoint.create({
+          data: {
+            specId,
+            path: ep.path,
+            method: ep.method,
+            summary: ep.summary ?? null,
+            responses: responsesData,
+          },
+        });
+      }
+    }
+
+    const staleEndpointIds = existingEndpoints
+      .filter((e) => !seenKeys.has(`${e.path}::${e.method}`))
+      .map((e) => e.id);
+
+    if (staleEndpointIds.length) {
+      await this.prisma.endpoint.deleteMany({ where: { id: { in: staleEndpointIds } } });
     }
   }
 
@@ -185,14 +213,11 @@ export class SpecificationService {
     });
 
     for (const endpoint of endpoints) {
-      await this.prisma.scenario.deleteMany({
-        where: { endpointId: endpoint.id },
-      });
-
       const details = endpoint.responses as {
         responses?: {
           statusCode: string;
           description: string;
+          contentType?: string;
           schema?: any;
         }[]
       } | null;
@@ -200,20 +225,27 @@ export class SpecificationService {
       const responses = details?.responses ?? [];
       const successCodes = ['200', '201', '202'];
 
+      const existingScenarios = await this.prisma.scenario.findMany({
+        where: { endpointId: endpoint.id },
+      });
+      const existingStatusCodes = new Set(existingScenarios.map((s) => s.statusCode));
+
       for (const response of responses) {
-      
+        const statusCode = parseInt(response.statusCode, 10);
+        if (existingStatusCodes.has(statusCode)) continue; // scénario déjà présent : on préserve ses personnalisations
+
         const mockData = response.schema
           ? this.mockDataService.generate(response.schema)
           : null;
 
         await this.prisma.scenario.create({
           data: {
-            statusCode: parseInt(response.statusCode, 10),
+            statusCode,
             description: response.description ?? '',
             name: `${endpoint.method} ${endpoint.path} — ${response.statusCode}`,
             isDefault: successCodes.includes(response.statusCode),
-        
             mockContent: mockData ? JSON.stringify(mockData, null, 2) : null,
+            contentType: mockData ? (response.contentType ?? 'application/json') : null,
             endpointId: endpoint.id,
           },
         });

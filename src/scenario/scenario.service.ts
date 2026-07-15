@@ -1,11 +1,15 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { MockDataService } from '../mock-data/mock-data.service';
 import { CreateScenarioDto } from './dto/create-scenario.dto';
 import { UpdateScenarioDto } from './dto/update-scenario.dto';
 
 @Injectable()
 export class ScenarioService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mockDataService: MockDataService,
+  ) {}
 
   async create(dto: CreateScenarioDto, userId: number) {
     const endpoint = await this.prisma.endpoint.findUnique({
@@ -21,10 +25,38 @@ export class ScenarioService {
       throw new ForbiddenException('You do not have access to this endpoint');
     }
 
+    const details = endpoint.responses as {
+      responses?: {
+        statusCode: string;
+        description: string;
+        contentType?: string;
+        schema?: any;
+      }[];
+    } | null;
+
+    const matchingResponse = details?.responses?.find(
+      (r) => parseInt(r.statusCode, 10) === dto.statusCode,
+    );
+
+    const generatedMockData =
+      !dto.mockContent && matchingResponse?.schema
+        ? this.mockDataService.generate(matchingResponse.schema)
+        : null;
+
+    const mockContent =
+      dto.mockContent ?? (generatedMockData ? JSON.stringify(generatedMockData, null, 2) : null);
+
     const created = await this.prisma.scenario.create({
       data: {
         statusCode: dto.statusCode,
-        description: dto.description,
+        description: dto.description ?? matchingResponse?.description ?? '',
+        name: dto.name ?? `${endpoint.method} ${endpoint.path} — ${dto.statusCode}`,
+        isDefault: dto.isDefault ?? false,
+        mockContent,
+        contentType:
+          dto.contentType ?? (mockContent ? matchingResponse?.contentType ?? 'application/json' : null),
+        headers: dto.headers,
+        delayMs: dto.delayMs ?? 0,
         endpointId: dto.endpointId,
       },
       include: {
@@ -110,6 +142,12 @@ export class ScenarioService {
         statusCode: dto.statusCode,
         description: dto.description,
         endpointId: dto.endpointId,
+        name: dto.name,
+        isDefault: dto.isDefault,
+        mockContent: dto.mockContent,
+        contentType: dto.contentType,
+        headers: dto.headers,
+        delayMs: dto.delayMs,
       },
       include: {
         endpoint: true,

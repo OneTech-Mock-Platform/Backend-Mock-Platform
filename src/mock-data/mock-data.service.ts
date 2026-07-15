@@ -28,6 +28,7 @@ export class MockDataService {
     // Heuristique sur le nom du format
     switch (schema.format) {
       case 'date':      return '2024-06-15';
+      case 'Date':      return '2024-06-15';
       case 'date-time': return '2024-06-15T10:30:00Z';
       case 'email':     return 'user@example.com';
       case 'uuid':      return 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
@@ -59,10 +60,12 @@ export class MockDataService {
 
   private generateArray(schema: any, depth: number): unknown[] {
     if (!schema.items) return [];
-    return [
-      this.generate(schema.items, depth + 1),
-      this.generate(schema.items, depth + 1),
-    ];
+
+    let count = 2;
+    if (schema.minItems !== undefined) count = Math.max(count, schema.minItems);
+    if (schema.maxItems !== undefined) count = Math.min(count, schema.maxItems);
+
+    return Array.from({ length: count }, () => this.generate(schema.items, depth + 1));
   }
 
   private generateObject(schema: any, depth: number): Record<string, unknown> {
