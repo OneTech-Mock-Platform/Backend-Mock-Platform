@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { MockDataService } from '../mock-data/mock-data.service';
+import { generateViolatingExample } from '../mock-data/constraint-violation.util';
 import { CreateScenarioDto } from './dto/create-scenario.dto';
 import { UpdateScenarioDto } from './dto/update-scenario.dto';
 
@@ -26,6 +28,7 @@ export class ScenarioService {
     }
 
     const details = endpoint.responses as {
+      requestBody?: { schema?: any } | null;
       responses?: {
         statusCode: string;
         description: string;
@@ -46,16 +49,40 @@ export class ScenarioService {
     const mockContent =
       dto.mockContent ?? (generatedMockData ? JSON.stringify(generatedMockData, null, 2) : null);
 
+    const requestExampleIsAuto = dto.requestExample === undefined;
+    const requestBodySchema = details?.requestBody?.schema;
+
+    let requestExample: Record<string, unknown> | null =
+      (dto.requestExample as Record<string, unknown> | undefined) ??
+      (requestBodySchema ? (this.mockDataService.generate(requestBodySchema) as Record<string, unknown>) : null);
+
+    let name = dto.name ?? `${endpoint.method} ${endpoint.path} — ${dto.statusCode}`;
+
+    if (
+      requestExampleIsAuto &&
+      [400, 422].includes(dto.statusCode) &&
+      requestBodySchema &&
+      requestExample
+    ) {
+      const violation = generateViolatingExample(requestExample, requestBodySchema);
+      if (violation) {
+        requestExample = violation.example;
+        if (!dto.name) name = `${dto.statusCode} — ${violation.violation}`;
+      }
+    }
+
     const created = await this.prisma.scenario.create({
       data: {
         statusCode: dto.statusCode,
         description: dto.description ?? matchingResponse?.description ?? '',
-        name: dto.name ?? `${endpoint.method} ${endpoint.path} — ${dto.statusCode}`,
+        name,
         isDefault: dto.isDefault ?? false,
         mockContent,
         contentType:
           dto.contentType ?? (mockContent ? matchingResponse?.contentType ?? 'application/json' : null),
         headers: dto.headers,
+        requestExample: (requestExample as Prisma.InputJsonValue) ?? Prisma.JsonNull,
+        requestExampleIsAuto,
         delayMs: dto.delayMs ?? 0,
         endpointId: dto.endpointId,
       },
@@ -147,6 +174,8 @@ export class ScenarioService {
         mockContent: dto.mockContent,
         contentType: dto.contentType,
         headers: dto.headers,
+        requestExample: dto.requestExample as Prisma.InputJsonValue | undefined,
+        requestExampleIsAuto: dto.requestExample !== undefined ? false : undefined,
         delayMs: dto.delayMs,
       },
       include: {

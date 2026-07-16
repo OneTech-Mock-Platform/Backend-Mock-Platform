@@ -45,6 +45,9 @@ export class MockDataService {
       if (/description/i.test(fieldName)) return 'Description générée automatiquement pour ce mock.';
       if (/key/i.test(fieldName)) return 'request.field';
       if (/code/i.test(fieldName)) return 'ERR_VALIDATION';
+      if (/field/i.test(fieldName)) return 'champ_exemple';
+      if (/info/i.test(fieldName)) return 'Information complémentaire.';
+      if (/context/i.test(fieldName)) return 'Contexte non structuré.';
     }
 
     // Heuristique sur les valeurs possibles communes

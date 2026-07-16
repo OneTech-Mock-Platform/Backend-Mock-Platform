@@ -36,6 +36,10 @@ export class UpdateScenarioDto {
   headers?: Record<string, string>;
 
   @IsOptional()
+  @IsObject()
+  requestExample?: Record<string, unknown>;
+
+  @IsOptional()
   @IsInt()
   @Min(0)
   delayMs?: number;

@@ -1,7 +1,9 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ParsingService } from '../parsing/parsing.service';
 import { MockDataService } from '../mock-data/mock-data.service';
+import { generateViolatingExample } from '../mock-data/constraint-violation.util';
 import { CreateSpecificationDto } from './dto/create-specification.dto';
 import { UpdateSpecificationDto } from './dto/update-specification.dto';
 
@@ -214,6 +216,7 @@ export class SpecificationService {
 
     for (const endpoint of endpoints) {
       const details = endpoint.responses as {
+        requestBody?: { schema?: any } | null;
         responses?: {
           statusCode: string;
           description: string;
@@ -224,6 +227,11 @@ export class SpecificationService {
 
       const responses = details?.responses ?? [];
       const successCodes = ['200', '201', '202'];
+
+      const requestBodySchema = details?.requestBody?.schema;
+      const validRequestExample = requestBodySchema
+        ? (this.mockDataService.generate(requestBodySchema) as Record<string, unknown>)
+        : null;
 
       const existingScenarios = await this.prisma.scenario.findMany({
         where: { endpointId: endpoint.id },
@@ -238,14 +246,27 @@ export class SpecificationService {
           ? this.mockDataService.generate(response.schema)
           : null;
 
+        let requestExample: Record<string, unknown> | null = validRequestExample;
+        let name = `${endpoint.method} ${endpoint.path} — ${response.statusCode}`;
+
+        if (['400', '422'].includes(response.statusCode) && requestBodySchema && validRequestExample) {
+          const violation = generateViolatingExample(validRequestExample, requestBodySchema);
+          if (violation) {
+            requestExample = violation.example;
+            name = `${response.statusCode} — ${violation.violation}`;
+          }
+        }
+
         await this.prisma.scenario.create({
           data: {
             statusCode,
             description: response.description ?? '',
-            name: `${endpoint.method} ${endpoint.path} — ${response.statusCode}`,
+            name,
             isDefault: successCodes.includes(response.statusCode),
             mockContent: mockData ? JSON.stringify(mockData, null, 2) : null,
             contentType: mockData ? (response.contentType ?? 'application/json') : null,
+            requestExample: (requestExample as Prisma.InputJsonValue) ?? Prisma.JsonNull,
+            requestExampleIsAuto: true,
             endpointId: endpoint.id,
           },
         });
