@@ -3,7 +3,7 @@ import { Injectable } from '@nestjs/common';
 @Injectable()
 export class MockDataService {
 
-  generate(schema: any, depth = 0): unknown {
+  generate(schema: any, depth = 0, fieldName?: string): unknown {
     if (!schema || depth > 6) return null;
 
     if (schema.example !== undefined) return schema.example;
@@ -11,20 +11,20 @@ export class MockDataService {
     if (schema.enum) return schema.enum[0];
 
     switch (schema.type) {
-      case 'string':  return this.generateString(schema);
+      case 'string':  return this.generateString(schema, fieldName);
       case 'integer': return this.generateInteger(schema);
       case 'number':  return this.generateNumber(schema);
       case 'boolean': return true;
       case 'array':   return this.generateArray(schema, depth);
       case 'object':  return this.generateObject(schema, depth);
       default:
-    
+
         if (schema.properties) return this.generateObject(schema, depth);
         return null;
     }
   }
 
-  private generateString(schema: any): string {
+  private generateString(schema: any, fieldName?: string): string {
     // Heuristique sur le nom du format
     switch (schema.format) {
       case 'date':      return '2024-06-15';
@@ -36,6 +36,15 @@ export class MockDataService {
       case 'iban':      return 'TN5910006035188298755016';
       case 'phone':     return '+21612345678';
       default:          break;
+    }
+
+    // Heuristiques rapides sur le nom du champ (volontairement simples, pas de génération contextuelle)
+    if (fieldName) {
+      if (/message/i.test(fieldName)) return 'Une erreur est survenue lors du traitement de la requête.';
+      if (/reason/i.test(fieldName)) return 'Le champ fourni ne respecte pas le format attendu.';
+      if (/description/i.test(fieldName)) return 'Description générée automatiquement pour ce mock.';
+      if (/key/i.test(fieldName)) return 'request.field';
+      if (/code/i.test(fieldName)) return 'ERR_VALIDATION';
     }
 
     // Heuristique sur les valeurs possibles communes
@@ -70,11 +79,19 @@ export class MockDataService {
 
   private generateObject(schema: any, depth: number): Record<string, unknown> {
     const result: Record<string, unknown> = {};
-    if (!schema.properties) return result;
 
-    for (const [key, prop] of Object.entries(schema.properties as Record<string, any>)) {
-      result[key] = this.generate(prop, depth + 1);
+    if (schema.properties) {
+      for (const [key, prop] of Object.entries(schema.properties as Record<string, any>)) {
+        result[key] = this.generate(prop, depth + 1, key);
+      }
+      return result;
     }
+
+    // Pas de "properties" défini mais un additionalProperties typé : éviter un objet vide systématique
+    if (schema.additionalProperties && typeof schema.additionalProperties === 'object') {
+      return { info: this.generate(schema.additionalProperties, depth + 1, 'info') };
+    }
+
     return result;
   }
 }
