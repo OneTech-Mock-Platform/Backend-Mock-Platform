@@ -8,6 +8,10 @@ export type GenerationContext = {
   suppressGenericErrorItems?: boolean;
   violationMessage?: string;
   isSuccessResponse?: boolean;
+  // Message 403 dérivé des extensions x-BbAccessControl-resource/function/privilege de la spec
+  // (ex: "Le privilège 'approve' sur la ressource 'Support Access' est requis.") — prioritaire
+  // sur response.description pour le message racine d'une réponse 403.
+  accessControlMessage?: string;
 };
 
 const DEFAULT_CONTEXT: GenerationContext = { index: 0 };
@@ -15,6 +19,23 @@ const DETERMINABLE_CAUSE_CODES = new Set([200, 201, 202, 400, 422]);
 
 export function isCauseDeterminable(statusCode: number): boolean {
   return DETERMINABLE_CAUSE_CODES.has(statusCode);
+}
+
+// Construit un message 403 réaliste à partir des extensions x-BbAccessControl-* de l'opération
+// (ex: "Le privilège 'approve' sur la ressource 'Support Access' est requis."), au lieu du
+// texte générique de response.description.
+export function buildAccessControlMessage(
+  accessControl?: { resource?: string; function?: string; privilege?: string } | null,
+): string | undefined {
+  if (!accessControl?.resource && !accessControl?.privilege) return undefined;
+
+  if (accessControl.privilege && accessControl.resource) {
+    return `Le privilège '${accessControl.privilege}' sur la ressource '${accessControl.resource}' est requis.`;
+  }
+  if (accessControl.resource) {
+    return `L'accès à la ressource '${accessControl.resource}' est requis.`;
+  }
+  return `Le privilège '${accessControl.privilege}' est requis.`;
 }
 
 @Injectable()
@@ -100,7 +121,9 @@ export class MockDataService {
         if (looksLikeErrorItem && ctx.violationMessage) {
           return ctx.violationMessage;
         }
-   
+        if (!looksLikeErrorItem && ctx.accessControlMessage) {
+          return ctx.accessControlMessage;
+        }
         return ctx.responseDescription?.trim() || 'Une erreur est survenue lors du traitement de la requête.';
       }
       if (/description/i.test(fieldName)) return 'Description générée automatiquement pour ce mock.';

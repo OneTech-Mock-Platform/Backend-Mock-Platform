@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/commo
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ParsingService } from '../parsing/parsing.service';
-import { MockDataService, isCauseDeterminable } from '../mock-data/mock-data.service';
+import { MockDataService, isCauseDeterminable, buildAccessControlMessage } from '../mock-data/mock-data.service';
 import { generateViolatingExample, parametersToObjectSchema } from '../mock-data/constraint-violation.util';
 import { CreateSpecificationDto } from './dto/create-specification.dto';
 import { UpdateSpecificationDto } from './dto/update-specification.dto';
@@ -138,6 +138,9 @@ export class SpecificationService {
           ? JSON.parse(JSON.stringify(ep.requestBody))
           : null,
         responses: JSON.parse(JSON.stringify(ep.responses)),
+        accessControl: ep.accessControl
+          ? JSON.parse(JSON.stringify(ep.accessControl))
+          : null,
       };
 
       const existing = existingByKey.get(key);
@@ -223,11 +226,17 @@ export class SpecificationService {
           description: string;
           contentType?: string;
           schema?: any;
-        }[]
+        }[];
+        accessControl?: { resource?: string; function?: string; privilege?: string } | null;
       } | null;
 
       const responses = details?.responses ?? [];
       const successCodes = ['200', '201', '202'];
+
+      // Extensions x-BbAccessControl-* (privilège/ressource requis pour l'opération) : un 403
+      // réaliste précise le privilège manquant plutôt qu'un texte générique, exactement comme
+      // x-pattern-message précise la contrainte violée pour un 400/422.
+      const accessControlMessage = buildAccessControlMessage(details?.accessControl);
 
       const requestBodySchema = details?.requestBody?.schema;
       const validRequestExample = requestBodySchema
@@ -288,6 +297,7 @@ export class SpecificationService {
               violationMessage,
               suppressGenericErrorItems,
               isSuccessResponse: successCodes.includes(response.statusCode),
+              accessControlMessage: statusCode === 403 ? accessControlMessage : undefined,
             })
           : null;
 

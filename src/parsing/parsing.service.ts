@@ -99,6 +99,19 @@ export class ParsingService {
           },
         );
 
+        // ── Extensions x-BbAccessControl-* (resource/function/privilege requis) ──
+        const accessControlResource = op['x-BbAccessControl-resource'] as string | undefined;
+        const accessControlFunction = op['x-BbAccessControl-function'] as string | undefined;
+        const accessControlPrivilege = op['x-BbAccessControl-privilege'] as string | undefined;
+        const accessControl =
+          accessControlResource || accessControlFunction || accessControlPrivilege
+            ? {
+                resource: accessControlResource,
+                function: accessControlFunction,
+                privilege: accessControlPrivilege,
+              }
+            : undefined;
+
         endpoints.push({
           path,
           method: method.toUpperCase(),
@@ -109,6 +122,7 @@ export class ParsingService {
           parameters,
           requestBody,
           responses,
+          accessControl,
         });
       }
     }

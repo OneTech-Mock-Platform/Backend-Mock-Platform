@@ -44,6 +44,15 @@ export interface ParsedRequestBody {
   schema?: unknown;
 }
 
+// Extensions vendor x-BbAccessControl-* (resource/function/privilege requis pour l'opération) —
+// utilisées pour enrichir automatiquement le message des réponses 403 avec le vrai privilège
+// et la vraie ressource attendus par l'API, au lieu d'un texte générique.
+export interface ParsedAccessControl {
+  resource?: string;
+  function?: string;
+  privilege?: string;
+}
+
 export interface ParsedEndpoint {
   path: string;
   method: string;
@@ -54,6 +63,7 @@ export interface ParsedEndpoint {
   parameters: ParsedParameter[];
   requestBody?: ParsedRequestBody;
   responses: ParsedResponse[];   // ← plus string[], maintenant objets complets
+  accessControl?: ParsedAccessControl;
 }
 
 export interface ParsedSpec {

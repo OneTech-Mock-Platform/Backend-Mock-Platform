@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { MockDataService, isCauseDeterminable } from '../mock-data/mock-data.service';
+import { MockDataService, isCauseDeterminable, buildAccessControlMessage } from '../mock-data/mock-data.service';
 import { generateViolatingExample, parametersToObjectSchema } from '../mock-data/constraint-violation.util';
 import { CreateScenarioDto } from './dto/create-scenario.dto';
 import { UpdateScenarioDto } from './dto/update-scenario.dto';
@@ -36,6 +36,7 @@ export class ScenarioService {
         contentType?: string;
         schema?: any;
       }[];
+      accessControl?: { resource?: string; function?: string; privilege?: string } | null;
     } | null;
 
     const matchingResponse = details?.responses?.find(
@@ -78,6 +79,8 @@ export class ScenarioService {
       ? !violatedField
       : !isCauseDeterminable(dto.statusCode);
 
+    const accessControlMessage = buildAccessControlMessage(details?.accessControl);
+
     const generatedMockData =
       !dto.mockContent && matchingResponse?.schema
         ? this.mockDataService.generate(matchingResponse.schema, 0, undefined, undefined, undefined, {
@@ -87,6 +90,7 @@ export class ScenarioService {
             violationMessage,
             suppressGenericErrorItems,
             isSuccessResponse: [200, 201, 202].includes(dto.statusCode),
+            accessControlMessage: dto.statusCode === 403 ? accessControlMessage : undefined,
           })
         : null;
 
