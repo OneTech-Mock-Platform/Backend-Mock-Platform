@@ -1,37 +1,72 @@
 import { Injectable } from '@nestjs/common';
 
+
+export type GenerationContext = {
+  index: number;
+  responseDescription?: string;
+  violatedField?: string;
+  suppressGenericErrorItems?: boolean;
+  violationMessage?: string;
+  isSuccessResponse?: boolean;
+};
+
+const DEFAULT_CONTEXT: GenerationContext = { index: 0 };
+const DETERMINABLE_CAUSE_CODES = new Set([200, 201, 202, 400, 422]);
+
+export function isCauseDeterminable(statusCode: number): boolean {
+  return DETERMINABLE_CAUSE_CODES.has(statusCode);
+}
+
 @Injectable()
 export class MockDataService {
 
-  generate(schema: any, depth = 0, fieldName?: string, siblingKeys?: string[], index = 0): unknown {
+  generate(
+    schema: any,
+    depth = 0,
+    fieldName?: string,
+    siblingKeys?: string[],
+    parentTitle?: string,
+    ctx: GenerationContext = DEFAULT_CONTEXT,
+  ): unknown {
     if (!schema || depth > 6) return null;
 
     if (schema.example !== undefined) return schema.example;
-
-    // Rotation dans la liste de valeurs autorisées plutôt que toujours le premier choix,
-    // pour que les éléments d'un même tableau ne soient pas systématiquement identiques.
-    if (schema.enum) return schema.enum[index % schema.enum.length];
+    if (schema.enum) return schema.enum[ctx.index % schema.enum.length];
 
     switch (schema.type) {
-      case 'string':  return this.generateString(schema, fieldName, siblingKeys, index);
-      case 'integer': return this.generateInteger(schema, index);
-      case 'number':  return this.generateNumber(schema, index);
-      case 'boolean': return index % 2 === 0;
-      case 'array':   return this.generateArray(schema, depth);
-      case 'object':  return this.generateObject(schema, depth, index);
+      case 'string':  return this.generateString(schema, depth, fieldName, siblingKeys, parentTitle, ctx);
+      case 'integer': return this.generateInteger(schema, ctx.index);
+      case 'number':  return this.generateNumber(schema, ctx.index);
+      case 'boolean': return ctx.index % 2 === 0;
+      case 'array':   return this.generateArray(schema, depth, fieldName, ctx);
+      case 'object':  return this.generateObject(schema, depth, ctx);
       default:
 
-        if (schema.properties) return this.generateObject(schema, depth, index);
+        if (schema.properties) return this.generateObject(schema, depth, ctx);
         return null;
     }
   }
 
-  private generateString(schema: any, fieldName?: string, siblingKeys?: string[], index = 0): string {
-    const base = this.generateBaseString(schema, fieldName, siblingKeys);
-    return index === 0 ? base : this.varyString(base, index);
+  private generateString(
+    schema: any,
+    depth: number,
+    fieldName?: string,
+    siblingKeys?: string[],
+    parentTitle?: string,
+    ctx: GenerationContext = DEFAULT_CONTEXT,
+  ): string {
+    const base = this.generateBaseString(schema, depth, fieldName, siblingKeys, parentTitle, ctx);
+    return ctx.index === 0 ? base : this.varyString(base, ctx.index);
   }
 
-  private generateBaseString(schema: any, fieldName?: string, siblingKeys?: string[]): string {
+  private generateBaseString(
+    schema: any,
+    depth: number,
+    fieldName?: string,
+    siblingKeys?: string[],
+    parentTitle?: string,
+    ctx: GenerationContext = DEFAULT_CONTEXT,
+  ): string {
     // Heuristique sur le nom du format
     switch (schema.format) {
       case 'date':      return '2024-06-15';
@@ -45,27 +80,36 @@ export class MockDataService {
       default:          break;
     }
 
-    // Formats de date non-standards (ex: "DD-MM-YYYY" au lieu de "date") : générer une vraie date
-    // respectant littéralement le patron demandé plutôt que de tomber en string_value.
+
     if (schema.format && this.looksLikeDateFormat(schema.format)) {
       return this.generateFromDatePattern(schema.format);
     }
 
-    // Heuristiques rapides sur le nom du champ (volontairement simples, pas de génération contextuelle)
     if (fieldName) {
-      // "message"/"reason" ne désignent une erreur que dans un objet de la forme error-item
-      // (message + key + context en champs frères). Ailleurs (ex: RequestDetails.reason dans
-      // une réponse 200), ce sont des champs métier neutres — ne pas y projeter un texte d'erreur.
       const looksLikeErrorItem = !!siblingKeys?.includes('key') && !!siblingKeys?.includes('context');
+      const parentIsErrorSchema = typeof parentTitle === 'string' && /error/i.test(parentTitle);
+      const isErrorContext = looksLikeErrorItem || parentIsErrorSchema;
+
       if (/message|reason/i.test(fieldName)) {
-        return looksLikeErrorItem
-          ? 'Une erreur est survenue lors du traitement de la requête.'
-          : 'Motif non renseigné.';
+        if (!isErrorContext) {
+          if (ctx.isSuccessResponse && depth <= 1) {
+            return ctx.responseDescription?.trim() || 'Opération réussie.';
+          }
+          return '';
+        }
+        if (looksLikeErrorItem && ctx.violationMessage) {
+          return ctx.violationMessage;
+        }
+   
+        return ctx.responseDescription?.trim() || 'Une erreur est survenue lors du traitement de la requête.';
       }
       if (/description/i.test(fieldName)) return 'Description générée automatiquement pour ce mock.';
       if (/status/i.test(fieldName)) return 'ACTIVE';
+      if (/creator|createdBy|author/i.test(fieldName)) return 'Utilisateur Système';
       if (/name/i.test(fieldName)) return 'Nom Exemple';
-      if (/key/i.test(fieldName)) return 'request.field';
+      if (/key/i.test(fieldName)) {
+        return ctx.violatedField ?? 'request.field';
+      }
       if (/code/i.test(fieldName)) return 'ERR_VALIDATION';
       if (/field/i.test(fieldName)) return 'champ_exemple';
       if (/info/i.test(fieldName)) return 'Information complémentaire.';
@@ -78,8 +122,6 @@ export class MockDataService {
     return 'string_value';
   }
 
-  // Introduit une variation visible entre les éléments d'un même tableau (index > 0),
-  // pour éviter que generateArray() ne produise des clones stricts.
   private varyString(value: string, index: number): string {
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (uuidRegex.test(value)) {
@@ -89,12 +131,10 @@ export class MockDataService {
     return `${value} #${index + 1}`;
   }
 
-  // Détecte les formats "faits maison" du type "DD-MM-YYYY", "DD/MM/YYYY", "YYYY.MM.DD"...
   private looksLikeDateFormat(format: string): boolean {
     return /^[DMY]{1,4}[-/.][DMY]{1,4}[-/.][DMY]{1,4}$/i.test(format);
   }
 
-  // Génère une date fixe (15 juin 2024) formatée littéralement selon le patron demandé.
   private generateFromDatePattern(format: string): string {
     const day = '15';
     const month = '06';
@@ -120,30 +160,42 @@ export class MockDataService {
     return base + index;
   }
 
-  private generateArray(schema: any, depth: number): unknown[] {
+  private generateArray(
+    schema: any,
+    depth: number,
+    fieldName?: string,
+    ctx: GenerationContext = DEFAULT_CONTEXT,
+  ): unknown[] {
     if (!schema.items) return [];
+
+   
+    if (fieldName && /^errors$/i.test(fieldName) && ctx.suppressGenericErrorItems) {
+      return [];
+    }
 
     let count = 1;
     if (schema.minItems !== undefined) count = Math.max(count, schema.minItems);
     if (schema.maxItems !== undefined) count = Math.min(count, schema.maxItems);
 
-    return Array.from({ length: count }, (_, i) => this.generate(schema.items, depth + 1, undefined, undefined, i));
+    return Array.from({ length: count }, (_, i) =>
+      this.generate(schema.items, depth + 1, undefined, undefined, undefined, { ...ctx, index: i }),
+    );
   }
 
-  private generateObject(schema: any, depth: number, index = 0): Record<string, unknown> {
+  private generateObject(schema: any, depth: number, ctx: GenerationContext = DEFAULT_CONTEXT): Record<string, unknown> {
     const result: Record<string, unknown> = {};
 
     if (schema.properties) {
       const siblingKeys = Object.keys(schema.properties);
+      const parentTitle = typeof schema.title === 'string' ? schema.title : undefined;
       for (const [key, prop] of Object.entries(schema.properties as Record<string, any>)) {
-        result[key] = this.generate(prop, depth + 1, key, siblingKeys, index);
+        result[key] = this.generate(prop, depth + 1, key, siblingKeys, parentTitle, ctx);
       }
       return result;
     }
 
-    // Pas de "properties" défini mais un additionalProperties typé : éviter un objet vide systématique
     if (schema.additionalProperties && typeof schema.additionalProperties === 'object') {
-      return { info: this.generate(schema.additionalProperties, depth + 1, 'info', undefined, index) };
+      return { info: this.generate(schema.additionalProperties, depth + 1, 'info', undefined, undefined, ctx) };
     }
 
     return result;

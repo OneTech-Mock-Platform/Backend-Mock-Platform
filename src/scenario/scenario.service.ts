@@ -1,8 +1,8 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { MockDataService } from '../mock-data/mock-data.service';
-import { generateViolatingExample } from '../mock-data/constraint-violation.util';
+import { MockDataService, isCauseDeterminable } from '../mock-data/mock-data.service';
+import { generateViolatingExample, parametersToObjectSchema } from '../mock-data/constraint-violation.util';
 import { CreateScenarioDto } from './dto/create-scenario.dto';
 import { UpdateScenarioDto } from './dto/update-scenario.dto';
 
@@ -29,6 +29,7 @@ export class ScenarioService {
 
     const details = endpoint.responses as {
       requestBody?: { schema?: any } | null;
+      parameters?: { name: string; required?: boolean; schema?: any }[];
       responses?: {
         statusCode: string;
         description: string;
@@ -41,14 +42,6 @@ export class ScenarioService {
       (r) => parseInt(r.statusCode, 10) === dto.statusCode,
     );
 
-    const generatedMockData =
-      !dto.mockContent && matchingResponse?.schema
-        ? this.mockDataService.generate(matchingResponse.schema)
-        : null;
-
-    const mockContent =
-      dto.mockContent ?? (generatedMockData ? JSON.stringify(generatedMockData, null, 2) : null);
-
     const requestExampleIsAuto = dto.requestExample === undefined;
     const requestBodySchema = details?.requestBody?.schema;
 
@@ -57,19 +50,48 @@ export class ScenarioService {
       (requestBodySchema ? (this.mockDataService.generate(requestBodySchema) as Record<string, unknown>) : null);
 
     let name = dto.name ?? `${endpoint.method} ${endpoint.path} — ${dto.statusCode}`;
+    let violatedField: string | undefined;
+    let violationMessage: string | undefined;
 
-    if (
-      requestExampleIsAuto &&
-      [400, 422].includes(dto.statusCode) &&
-      requestBodySchema &&
-      requestExample
-    ) {
-      const violation = generateViolatingExample(requestExample, requestBodySchema);
-      if (violation) {
-        requestExample = violation.example;
-        if (!dto.name) name = `${dto.statusCode} — ${violation.violation}`;
+    if (requestExampleIsAuto && [400, 422].includes(dto.statusCode)) {
+      if (requestBodySchema && requestExample) {
+        const violation = generateViolatingExample(requestExample, requestBodySchema);
+        if (violation) {
+          requestExample = violation.example;
+          if (!dto.name) name = `${dto.statusCode} — ${violation.violation}`;
+          violatedField = violation.field;
+          violationMessage = violation.message;
+        }
+      } else if (!requestBodySchema && details?.parameters?.length) {
+        const parametersSchema = parametersToObjectSchema(details.parameters);
+        const validParametersExample = this.mockDataService.generate(parametersSchema) as Record<string, unknown>;
+        const violation = generateViolatingExample(validParametersExample, parametersSchema);
+        if (violation) {
+          if (!dto.name) name = `${dto.statusCode} — ${violation.violation}`;
+          violatedField = violation.field;
+          violationMessage = violation.message;
+        }
       }
     }
+
+    const suppressGenericErrorItems = [400, 422].includes(dto.statusCode)
+      ? !violatedField
+      : !isCauseDeterminable(dto.statusCode);
+
+    const generatedMockData =
+      !dto.mockContent && matchingResponse?.schema
+        ? this.mockDataService.generate(matchingResponse.schema, 0, undefined, undefined, undefined, {
+            index: 0,
+            responseDescription: matchingResponse.description,
+            violatedField,
+            violationMessage,
+            suppressGenericErrorItems,
+            isSuccessResponse: [200, 201, 202].includes(dto.statusCode),
+          })
+        : null;
+
+    const mockContent =
+      dto.mockContent ?? (generatedMockData ? JSON.stringify(generatedMockData, null, 2) : null);
 
     const created = await this.prisma.scenario.create({
       data: {

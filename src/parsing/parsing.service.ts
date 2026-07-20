@@ -76,7 +76,7 @@ export class ParsingService {
         if (op.requestBody) {
           const rb = op.requestBody as any;
           const rbContent = rb.content ?? {};
-          const contentType = Object.keys(rbContent)[0] ?? 'application/json';
+          const contentType = this.pickContentType(rbContent) ?? 'application/json';
           requestBody = {
             required: rb.required ?? false,
             contentType,
@@ -89,7 +89,7 @@ export class ParsingService {
         const responses: ParsedResponse[] = Object.entries(responsesRaw).map(
           ([code, res]) => {
             const resContent = res.content ?? {};
-            const contentType = Object.keys(resContent)[0];
+            const contentType = this.pickContentType(resContent);
             return {
               statusCode: code,
               description: res.description ?? '',
@@ -120,5 +120,12 @@ export class ParsingService {
     const extension = fileName.split('.').pop()?.toLowerCase();
     if (extension === 'yaml' || extension === 'yml') return 'yaml';
     return 'json';
+  }
+
+
+  private pickContentType(content: Record<string, unknown>): string | undefined {
+    const keys = Object.keys(content);
+    if (keys.includes('application/json')) return 'application/json';
+    return keys[0];
   }
 }

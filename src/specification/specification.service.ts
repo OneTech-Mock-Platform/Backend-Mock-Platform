@@ -2,8 +2,8 @@ import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/commo
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ParsingService } from '../parsing/parsing.service';
-import { MockDataService } from '../mock-data/mock-data.service';
-import { generateViolatingExample } from '../mock-data/constraint-violation.util';
+import { MockDataService, isCauseDeterminable } from '../mock-data/mock-data.service';
+import { generateViolatingExample, parametersToObjectSchema } from '../mock-data/constraint-violation.util';
 import { CreateSpecificationDto } from './dto/create-specification.dto';
 import { UpdateSpecificationDto } from './dto/update-specification.dto';
 
@@ -217,6 +217,7 @@ export class SpecificationService {
     for (const endpoint of endpoints) {
       const details = endpoint.responses as {
         requestBody?: { schema?: any } | null;
+        parameters?: { name: string; required?: boolean; schema?: any }[];
         responses?: {
           statusCode: string;
           description: string;
@@ -233,6 +234,13 @@ export class SpecificationService {
         ? (this.mockDataService.generate(requestBodySchema) as Record<string, unknown>)
         : null;
 
+      const parametersSchema = !requestBodySchema && details?.parameters?.length
+        ? parametersToObjectSchema(details.parameters)
+        : undefined;
+      const validParametersExample = parametersSchema
+        ? (this.mockDataService.generate(parametersSchema) as Record<string, unknown>)
+        : null;
+
       const existingScenarios = await this.prisma.scenario.findMany({
         where: { endpointId: endpoint.id },
       });
@@ -240,22 +248,48 @@ export class SpecificationService {
 
       for (const response of responses) {
         const statusCode = parseInt(response.statusCode, 10);
-        if (existingStatusCodes.has(statusCode)) continue; // scénario déjà présent : on préserve ses personnalisations
-
-        const mockData = response.schema
-          ? this.mockDataService.generate(response.schema)
-          : null;
+        if (existingStatusCodes.has(statusCode)) continue; 
 
         let requestExample: Record<string, unknown> | null = validRequestExample;
         let name = `${endpoint.method} ${endpoint.path} — ${response.statusCode}`;
+        let violatedField: string | undefined;
+        let violationMessage: string | undefined;
 
-        if (['400', '422'].includes(response.statusCode) && requestBodySchema && validRequestExample) {
-          const violation = generateViolatingExample(validRequestExample, requestBodySchema);
-          if (violation) {
-            requestExample = violation.example;
-            name = `${response.statusCode} — ${violation.violation}`;
+        if (['400', '422'].includes(response.statusCode)) {
+          if (requestBodySchema && validRequestExample) {
+            const violation = generateViolatingExample(validRequestExample, requestBodySchema);
+            if (violation) {
+              requestExample = violation.example;
+              name = `${response.statusCode} — ${violation.violation}`;
+              violatedField = violation.field;
+              violationMessage = violation.message;
+            }
+          } else if (parametersSchema && validParametersExample) {
+           
+            const violation = generateViolatingExample(validParametersExample, parametersSchema);
+            if (violation) {
+              name = `${response.statusCode} — ${violation.violation}`;
+              violatedField = violation.field;
+              violationMessage = violation.message;
+            }
           }
         }
+
+       
+        const suppressGenericErrorItems = ['400', '422'].includes(response.statusCode)
+          ? !violatedField
+          : !isCauseDeterminable(statusCode);
+
+        const mockData = response.schema
+          ? this.mockDataService.generate(response.schema, 0, undefined, undefined, undefined, {
+              index: 0,
+              responseDescription: response.description,
+              violatedField,
+              violationMessage,
+              suppressGenericErrorItems,
+              isSuccessResponse: successCodes.includes(response.statusCode),
+            })
+          : null;
 
         await this.prisma.scenario.create({
           data: {
