@@ -10,6 +10,7 @@ import { EndpointModule } from './endpoint/endpoint.module';
 import { AuthModule } from './auth/auth.module';
 import { ConfigModule } from '@nestjs/config';
 import { MockProxyModule } from './mock-proxy/mock-proxy.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 
 @Module({
@@ -21,7 +22,7 @@ import { MockProxyModule } from './mock-proxy/mock-proxy.module';
 PrismaModule, OpenApiMockModule,
     SpecificationModule, ScenarioModule,
     MockDataModule, EndpointModule,
-    AuthModule, MockProxyModule],
+    AuthModule, MockProxyModule, DashboardModule],
   controllers: [AppController],
   providers: [AppService],
 })
