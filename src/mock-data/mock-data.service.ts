@@ -8,9 +8,6 @@ export type GenerationContext = {
   suppressGenericErrorItems?: boolean;
   violationMessage?: string;
   isSuccessResponse?: boolean;
-  // Message 403 dérivé des extensions x-BbAccessControl-resource/function/privilege de la spec
-  // (ex: "Le privilège 'approve' sur la ressource 'Support Access' est requis.") — prioritaire
-  // sur response.description pour le message racine d'une réponse 403.
   accessControlMessage?: string;
 };
 
@@ -21,9 +18,6 @@ export function isCauseDeterminable(statusCode: number): boolean {
   return DETERMINABLE_CAUSE_CODES.has(statusCode);
 }
 
-// Construit un message 403 réaliste à partir des extensions x-BbAccessControl-* de l'opération
-// (ex: "Le privilège 'approve' sur la ressource 'Support Access' est requis."), au lieu du
-// texte générique de response.description.
 export function buildAccessControlMessage(
   accessControl?: { resource?: string; function?: string; privilege?: string } | null,
 ): string | undefined {
@@ -139,7 +133,6 @@ export class MockDataService {
       if (/context/i.test(fieldName)) return 'Contexte non structuré.';
     }
 
-    // Heuristique sur les valeurs possibles communes
     if (schema.minLength) return 'A'.repeat(schema.minLength);
 
     return 'string_value';
