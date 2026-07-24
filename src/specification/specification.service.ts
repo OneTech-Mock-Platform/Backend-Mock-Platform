@@ -4,6 +4,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ParsingService } from '../parsing/parsing.service';
 import { MockDataService, isCauseDeterminable, buildAccessControlMessage } from '../mock-data/mock-data.service';
 import { generateViolatingExample, parametersToObjectSchema } from '../mock-data/constraint-violation.util';
+import { collectWeakFields } from '../mock-data/weak-field-collector';
+import { suggestFieldValues } from '../mock-data/gemini-field-suggester';
+import { patchWeakValues } from '../mock-data/weak-value-patcher';
 import { CreateSpecificationDto } from './dto/create-specification.dto';
 import { UpdateSpecificationDto } from './dto/update-specification.dto';
 
@@ -31,6 +34,7 @@ export class SpecificationService {
     });
 
     await this.parseAndSaveEndpoints(created.id, dto.content, dto.fileName!);
+    await this.refreshFieldSuggestions(created.id);
     await this.generateScenarios(created.id);
     return this.toResponse(created);
   }
@@ -77,6 +81,7 @@ export class SpecificationService {
     });
 
     await this.parseAndSaveEndpoints(updated.id, updated.content, updated.filePath);
+    await this.refreshFieldSuggestions(updated.id);
     await this.generateScenarios(updated.id);
     return this.toResponse(updated);
   }
@@ -171,6 +176,44 @@ export class SpecificationService {
 
     if (staleEndpointIds.length) {
       await this.prisma.endpoint.deleteMany({ where: { id: { in: staleEndpointIds } } });
+    }
+  }
+
+  // Séquence critique : collecter les champs faibles DE CETTE SPEC → filtrer ceux déjà en
+  // cache → appel Gemini groupé pour les nouveaux uniquement → sauver → RECHARGER le cache
+  // en mémoire → et seulement après, generateScenarios() (appelé juste après ce return, dans
+  // create()/update()) peut effectivement utiliser les nouvelles suggestions. Ne doit jamais
+  // faire échouer l'import : si Gemini est down/en quota/injoignable, on continue avec le
+  // fallback générique habituel.
+  private async refreshFieldSuggestions(specId: string) {
+    try {
+      const weakFields = await collectWeakFields(this.prisma, specId);
+      const uncached = weakFields.filter((f) => !this.mockDataService.hasSuggestion(f.id));
+
+      if (uncached.length === 0) return;
+
+      const suggestions = await suggestFieldValues(uncached);
+
+      for (const field of uncached) {
+        if (!Object.prototype.hasOwnProperty.call(suggestions, field.id)) continue;
+        await this.prisma.fieldSuggestion.upsert({
+          where: { fieldKey: field.id },
+          create: {
+            fieldKey: field.id,
+            fieldName: field.name,
+            fieldType: field.type,
+            value: suggestions[field.id] as Prisma.InputJsonValue,
+            source: 'gemini',
+          },
+          update: {
+            value: suggestions[field.id] as Prisma.InputJsonValue,
+          },
+        });
+      }
+
+      await this.mockDataService.reloadSuggestionCache();
+    } catch (err) {
+      console.error('[IA] Génération de suggestions échouée, poursuite avec fallback générique', err);
     }
   }
 
@@ -316,5 +359,70 @@ export class SpecificationService {
         });
       }
     }
+  }
+
+  // Retrofill pour les scénarios déjà en base (utilisé par le script fields:refresh) :
+  // ne remplace QUE les valeurs encore exactement égales au placeholder générique
+  // ('string_value'/'{}') par la suggestion Gemini en cache — jamais une régénération
+  // complète, pour ne jamais écraser une édition manuelle (mockContent n'a pas de flag
+  // "généré automatiquement" ; requestExample si, via requestExampleIsAuto).
+  async regenerateScenarios(specId: string) {
+    const endpoints = await this.prisma.endpoint.findMany({ where: { specId } });
+    let patchedCount = 0;
+
+    for (const endpoint of endpoints) {
+      const details = endpoint.responses as {
+        requestBody?: { schema?: any } | null;
+        parameters?: { name: string; required?: boolean; schema?: any }[];
+        responses?: { statusCode: string; description: string; contentType?: string; schema?: any }[];
+      } | null;
+      if (!details) continue;
+
+      const requestBodySchema = details.requestBody?.schema;
+      const parametersSchema = !requestBodySchema && details.parameters?.length
+        ? parametersToObjectSchema(details.parameters)
+        : undefined;
+      const requestSchema = requestBodySchema ?? parametersSchema;
+
+      const scenarios = await this.prisma.scenario.findMany({ where: { endpointId: endpoint.id } });
+
+      for (const scenario of scenarios) {
+        const matchingResponse = details.responses?.find(
+          (r) => parseInt(r.statusCode, 10) === scenario.statusCode,
+        );
+        const updates: Prisma.ScenarioUpdateInput = {};
+        const getSuggestion = (key: string) => this.mockDataService.getSuggestion(key);
+
+        if (scenario.requestExampleIsAuto && scenario.requestExample && requestSchema) {
+          const patched = patchWeakValues(scenario.requestExample, requestSchema, getSuggestion);
+          if (JSON.stringify(patched) !== JSON.stringify(scenario.requestExample)) {
+            updates.requestExample = patched as Prisma.InputJsonValue;
+          }
+        }
+
+        if (scenario.mockContent && matchingResponse?.schema) {
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(scenario.mockContent);
+          } catch {
+            parsed = undefined;
+          }
+          if (parsed !== undefined) {
+            const patched = patchWeakValues(parsed, matchingResponse.schema, getSuggestion);
+            const patchedString = JSON.stringify(patched, null, 2);
+            if (patchedString !== scenario.mockContent) {
+              updates.mockContent = patchedString;
+            }
+          }
+        }
+
+        if (Object.keys(updates).length > 0) {
+          await this.prisma.scenario.update({ where: { id: scenario.id }, data: updates });
+          patchedCount += 1;
+        }
+      }
+    }
+
+    return patchedCount;
   }
 }

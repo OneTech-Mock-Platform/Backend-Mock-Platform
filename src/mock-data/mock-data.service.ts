@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { buildFieldKey } from './field-suggestion.util';
 
 
 export type GenerationContext = {
@@ -33,7 +35,32 @@ export function buildAccessControlMessage(
 }
 
 @Injectable()
-export class MockDataService {
+export class MockDataService implements OnModuleInit {
+  constructor(private readonly prisma: PrismaService) {}
+
+  // Cache en mémoire des suggestions Gemini pour les champs "faibles" (string_value / {}).
+  // Chargé au démarrage, et rechargé manuellement (reloadSuggestionCache) juste après avoir
+  // enregistré de nouvelles suggestions — voir SpecificationService.create()/update() et
+  // le script fields:refresh, qui doivent tous les deux appeler reloadSuggestionCache()
+  // AVANT de (re)générer des scénarios pour que le cache à jour soit effectivement utilisé.
+  private suggestionCache = new Map<string, unknown>();
+
+  async onModuleInit() {
+    await this.reloadSuggestionCache();
+  }
+
+  async reloadSuggestionCache() {
+    const rows = await this.prisma.fieldSuggestion.findMany();
+    this.suggestionCache = new Map(rows.map((row: { fieldKey: string; value: unknown }) => [row.fieldKey, row.value]));
+  }
+
+  hasSuggestion(fieldKey: string): boolean {
+    return this.suggestionCache.has(fieldKey);
+  }
+
+  getSuggestion(fieldKey: string): unknown {
+    return this.suggestionCache.get(fieldKey);
+  }
 
   generate(
     schema: any,
@@ -54,10 +81,10 @@ export class MockDataService {
       case 'number':  return this.generateNumber(schema, ctx.index);
       case 'boolean': return ctx.index % 2 === 0;
       case 'array':   return this.generateArray(schema, depth, fieldName, ctx);
-      case 'object':  return this.generateObject(schema, depth, ctx);
+      case 'object':  return this.generateObject(schema, depth, fieldName, ctx);
       default:
 
-        if (schema.properties) return this.generateObject(schema, depth, ctx);
+        if (schema.properties) return this.generateObject(schema, depth, fieldName, ctx);
         return null;
     }
   }
@@ -135,6 +162,11 @@ export class MockDataService {
 
     if (schema.minLength) return 'A'.repeat(schema.minLength);
 
+    if (fieldName) {
+      const cached = this.suggestionCache.get(buildFieldKey('string', fieldName, schema.description));
+      if (typeof cached === 'string') return cached;
+    }
+
     return 'string_value';
   }
 
@@ -184,7 +216,7 @@ export class MockDataService {
   ): unknown[] {
     if (!schema.items) return [];
 
-   
+
     if (fieldName && /^errors$/i.test(fieldName) && ctx.suppressGenericErrorItems) {
       return [];
     }
@@ -198,7 +230,12 @@ export class MockDataService {
     );
   }
 
-  private generateObject(schema: any, depth: number, ctx: GenerationContext = DEFAULT_CONTEXT): Record<string, unknown> {
+  private generateObject(
+    schema: any,
+    depth: number,
+    fieldName?: string,
+    ctx: GenerationContext = DEFAULT_CONTEXT,
+  ): Record<string, unknown> {
     const result: Record<string, unknown> = {};
 
     if (schema.properties) {
@@ -212,6 +249,11 @@ export class MockDataService {
 
     if (schema.additionalProperties && typeof schema.additionalProperties === 'object') {
       return { info: this.generate(schema.additionalProperties, depth + 1, 'info', undefined, undefined, ctx) };
+    }
+
+    if (fieldName) {
+      const cached = this.suggestionCache.get(buildFieldKey('object', fieldName, schema.description));
+      if (cached && typeof cached === 'object') return cached as Record<string, unknown>;
     }
 
     return result;

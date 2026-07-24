@@ -58,6 +58,17 @@ model Scenario {
 }
 
 
+model FieldSuggestion {
+  id        String   @id @default(cuid())
+  fieldKey  String   @unique
+  fieldName String
+  fieldType String
+  value     Json
+  source    String   @default("gemini")
+  createdAt DateTime @default(now())
+}
+
+
 model PasswordReset {
   id         String   @id @default(uuid())
   userId     Int
