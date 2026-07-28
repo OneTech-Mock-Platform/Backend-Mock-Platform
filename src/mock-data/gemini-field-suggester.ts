@@ -1,6 +1,6 @@
 import type { WeakField } from './weak-field-collector';
+import { callGeminiJSON } from './gemini-client';
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL ?? 'gemini-3.5-flash-lite';
 const BATCH_SIZE = 100;
 
 const SYSTEM_PROMPT = `Tu es un générateur de données de test (mock data) pour une API REST.
@@ -33,11 +33,6 @@ function chunk<T>(arr: T[], size: number): T[][] {
 export async function suggestFieldValues(fields: WeakField[]): Promise<Record<string, unknown>> {
   if (fields.length === 0) return {};
 
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error("GEMINI_API_KEY manquant dans les variables d'environnement.");
-  }
-
   const results: Record<string, unknown> = {};
 
   for (const batch of chunk(fields, BATCH_SIZE)) {
@@ -51,32 +46,9 @@ export async function suggestFieldValues(fields: WeakField[]): Promise<Record<st
       })),
     };
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: `${SYSTEM_PROMPT}\n\nChamps à traiter :\n${JSON.stringify(payload, null, 2)}` }] }],
-          generationConfig: { responseMimeType: 'application/json' },
-        }),
-      },
+    const parsed = await callGeminiJSON(
+      `${SYSTEM_PROMPT}\n\nChamps à traiter :\n${JSON.stringify(payload, null, 2)}`,
     );
-
-    if (!response.ok) {
-      const errBody = await response.text().catch(() => '');
-      throw new Error(`Appel Gemini échoué (${response.status}) : ${errBody}`);
-    }
-
-    const data: any = await response.json();
-    const text: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
-
-    let parsed: Record<string, unknown>;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      throw new Error(`Réponse Gemini non-JSON : ${text.slice(0, 300)}`);
-    }
 
     for (const field of batch) {
       if (Object.prototype.hasOwnProperty.call(parsed, field.id)) {

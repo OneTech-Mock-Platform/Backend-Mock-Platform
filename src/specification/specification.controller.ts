@@ -4,6 +4,7 @@ import { CreateSpecificationDto } from './dto/create-specification.dto';
 import { UpdateSpecificationDto } from './dto/update-specification.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { detectEndpointWarnings } from '../endpoint/spec-warnings.util';
 
 @Controller('specifications')
 @UseGuards(JwtAuthGuard)
@@ -32,7 +33,12 @@ export class SpecificationController {
 			where: { specId: id },
 			orderBy: [{ method: 'asc' }, { path: 'asc' }],
 		});
-		return { items: endpoints };
+		return {
+			items: endpoints.map((e) => ({
+				...e,
+				warnings: detectEndpointWarnings(e.responses as any),
+			})),
+		};
 	}
 
 	@Post()

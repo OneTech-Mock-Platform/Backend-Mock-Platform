@@ -2,6 +2,7 @@ import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, Re
 import { ScenarioService } from './scenario.service';
 import { CreateScenarioDto } from './dto/create-scenario.dto';
 import { UpdateScenarioDto } from './dto/update-scenario.dto';
+import { GenerateScenarioContentDto } from './dto/generate-scenario-content.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @Controller('scenarios')
@@ -24,7 +25,19 @@ export class ScenarioController {
   async findByEndpoint(@Param('endpointId') endpointId: string, @Request() req: any) {
     return this.scenarioService.findByEndpoint(endpointId, req.user.id);
   }
-  
+
+  // Pré-remplissage IA du formulaire "Nouveau scénario" (ne sauvegarde rien) : voir
+  // scenario.service.ts#generateContentWithAI et scenario-ai.util.ts pour le prompt.
+  @Post('endpoint/:endpointId/generate-with-ai')
+  async generateWithAI(
+    @Param('endpointId') endpointId: string,
+    @Body() dto: GenerateScenarioContentDto,
+    @Request() req: any,
+  ) {
+    return this.scenarioService.generateContentWithAI(endpointId, dto, req.user.id);
+  }
+
+
   @Get(':id')
   findOne(@Param('id') id: string, @Request() req: any) {
     return this.scenarioService.findOne(id, req.user.id);

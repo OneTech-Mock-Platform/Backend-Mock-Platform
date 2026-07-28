@@ -1,6 +1,7 @@
 import { All, Controller, Param, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { MockProxyService } from './mock-proxy.service';
+import { randomUUID } from 'crypto';
 
 @Controller('mock')
 export class MockProxyController {
@@ -8,6 +9,11 @@ export class MockProxyController {
 
   @All(':specId/*splat')
   async handle(@Param('specId') specId: string, @Req() req: Request, @Res() res: Response) {
+
+     // ── Métadonnées de traçabilité, sur TOUTES les réponses, y compris les 404 ──
+    res.setHeader('X-Request-Id', randomUUID());
+    res.setHeader('X-Timestamp', new Date().toISOString());
+
     const requestedPath = req.path.replace(`/mock/${specId}`, '') || '/';
     const preferHeader = req.headers['prefer'] as string | undefined;
 

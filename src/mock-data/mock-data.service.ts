@@ -37,12 +37,6 @@ export function buildAccessControlMessage(
 @Injectable()
 export class MockDataService implements OnModuleInit {
   constructor(private readonly prisma: PrismaService) {}
-
-  // Cache en mémoire des suggestions Gemini pour les champs "faibles" (string_value / {}).
-  // Chargé au démarrage, et rechargé manuellement (reloadSuggestionCache) juste après avoir
-  // enregistré de nouvelles suggestions — voir SpecificationService.create()/update() et
-  // le script fields:refresh, qui doivent tous les deux appeler reloadSuggestionCache()
-  // AVANT de (re)générer des scénarios pour que le cache à jour soit effectivement utilisé.
   private suggestionCache = new Map<string, unknown>();
 
   async onModuleInit() {
@@ -225,8 +219,11 @@ export class MockDataService implements OnModuleInit {
     if (schema.minItems !== undefined) count = Math.max(count, schema.minItems);
     if (schema.maxItems !== undefined) count = Math.min(count, schema.maxItems);
 
-    return Array.from({ length: count }, (_, i) =>
+    /*return Array.from({ length: count }, (_, i) =>
       this.generate(schema.items, depth + 1, undefined, undefined, undefined, { ...ctx, index: i }),
+    */
+    return Array.from({ length: count }, (_, i) =>
+    this.generate(schema.items, depth + 1, fieldName, undefined, undefined, { ...ctx, index: i }),
     );
   }
 
@@ -247,6 +244,11 @@ export class MockDataService implements OnModuleInit {
       return result;
     }
 
+    /*
+    if (schema.additionalProperties && typeof schema.additionalProperties === 'object') {
+  return {}; // additionalProperties ne dit jamais quelles clés existent réellement — on n'invente pas de nom de clé
+}
+  */
     if (schema.additionalProperties && typeof schema.additionalProperties === 'object') {
       return { info: this.generate(schema.additionalProperties, depth + 1, 'info', undefined, undefined, ctx) };
     }

@@ -52,6 +52,7 @@ model Scenario {
   headers        Json?
   requestExample Json?
   requestExampleIsAuto Boolean @default(true)
+  mockContentIsAuto Boolean @default(true)
   delayMs        Int      @default(0)
   endpointId     String
   endpoint       Endpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)

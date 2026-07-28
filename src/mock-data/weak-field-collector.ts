@@ -3,7 +3,7 @@ import { parametersToObjectSchema } from './constraint-violation.util';
 import { buildFieldKey, isWeakObjectField, isWeakStringField } from './field-suggestion.util';
 
 export type WeakField = {
-  id: string; // = fieldKey (hash), utilisé aussi comme clé de sortie attendue de Gemini
+  id: string; 
   name: string;
   type: 'string' | 'object';
   description?: string;
@@ -16,12 +16,6 @@ type EndpointDetails = {
   responses?: { statusCode: string; description: string; contentType?: string; schema?: any }[];
 };
 
-// Traverse un schéma en mirroring exact de MockDataService.generate() : mêmes règles de
-// récursion (properties / items / additionalProperties-objet), même cutoff de profondeur,
-// pour repérer les feuilles qui retomberaient sur le fallback générique 'string_value' / {}.
-// Le fieldName n'est PAS propagé dans les items d'array (generateArray ne le fait pas non
-// plus), sans quoi on demanderait des suggestions Gemini pour des clés jamais interrogées
-// au moment de la génération réelle.
 function walk(schema: any, fieldName: string | undefined, depth: number, endpointHint: string, out: Map<string, WeakField>) {
   if (!schema || depth > 6) return;
   if (schema.example !== undefined) return;
@@ -37,10 +31,16 @@ function walk(schema: any, fieldName: string | undefined, depth: number, endpoin
     return;
   }
 
-  if (schema.type === 'array') {
+  /*if (schema.type === 'array') {
     if (schema.items) walk(schema.items, undefined, depth + 1, endpointHint, out);
     return;
-  }
+  }*/
+
+    if (schema.type === 'array') {
+  if (schema.items) walk(schema.items, fieldName, depth + 1, endpointHint, out);
+  
+  return;
+}
 
   if (schema.type === 'object' || schema.properties) {
     if (schema.properties) {
@@ -64,8 +64,6 @@ function walk(schema: any, fieldName: string | undefined, depth: number, endpoin
   }
 }
 
-// specId optionnel : scope la collecte à une seule spec (import/mise à jour en cours) pour
-// éviter de rescanner toute la base à chaque fois. Omis => toutes les specs (retrofill).
 export async function collectWeakFields(prisma: PrismaService, specId?: string): Promise<WeakField[]> {
   const endpoints = await prisma.endpoint.findMany(specId ? { where: { specId } } : undefined);
   const found = new Map<string, WeakField>();

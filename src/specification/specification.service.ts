@@ -179,12 +179,6 @@ export class SpecificationService {
     }
   }
 
-  // Séquence critique : collecter les champs faibles DE CETTE SPEC → filtrer ceux déjà en
-  // cache → appel Gemini groupé pour les nouveaux uniquement → sauver → RECHARGER le cache
-  // en mémoire → et seulement après, generateScenarios() (appelé juste après ce return, dans
-  // create()/update()) peut effectivement utiliser les nouvelles suggestions. Ne doit jamais
-  // faire échouer l'import : si Gemini est down/en quota/injoignable, on continue avec le
-  // fallback générique habituel.
   private async refreshFieldSuggestions(specId: string) {
     try {
       const weakFields = await collectWeakFields(this.prisma, specId);
@@ -276,9 +270,6 @@ export class SpecificationService {
       const responses = details?.responses ?? [];
       const successCodes = ['200', '201', '202'];
 
-      // Extensions x-BbAccessControl-* (privilège/ressource requis pour l'opération) : un 403
-      // réaliste précise le privilège manquant plutôt qu'un texte générique, exactement comme
-      // x-pattern-message précise la contrainte violée pour un 400/422.
       const accessControlMessage = buildAccessControlMessage(details?.accessControl);
 
       const requestBodySchema = details?.requestBody?.schema;
@@ -361,11 +352,6 @@ export class SpecificationService {
     }
   }
 
-  // Retrofill pour les scénarios déjà en base (utilisé par le script fields:refresh) :
-  // ne remplace QUE les valeurs encore exactement égales au placeholder générique
-  // ('string_value'/'{}') par la suggestion Gemini en cache — jamais une régénération
-  // complète, pour ne jamais écraser une édition manuelle (mockContent n'a pas de flag
-  // "généré automatiquement" ; requestExample si, via requestExampleIsAuto).
   async regenerateScenarios(specId: string) {
     const endpoints = await this.prisma.endpoint.findMany({ where: { specId } });
     let patchedCount = 0;
@@ -400,7 +386,7 @@ export class SpecificationService {
           }
         }
 
-        if (scenario.mockContent && matchingResponse?.schema) {
+        if (scenario.mockContentIsAuto && scenario.mockContent && matchingResponse?.schema) {
           let parsed: unknown;
           try {
             parsed = JSON.parse(scenario.mockContent);

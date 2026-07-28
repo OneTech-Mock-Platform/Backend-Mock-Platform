@@ -3,7 +3,7 @@ export type ConstraintViolation = {
   violation: string;
   field: string;
   // Message d'erreur métier écrit par l'auteur de la spec (x-pattern-message), quand disponible
-  // sur le champ violé — à préférer à un texte générique dans errors[].message.
+ 
   message?: string;
 };
 
@@ -14,8 +14,7 @@ type ParsedParameterLike = {
 };
 
 // Convertit une liste de parameters (query/path) en un schéma objet équivalent à un requestBody,
-// pour pouvoir réutiliser generateViolatingExample() telle quelle (même logique de priorité :
-// requis manquant > pattern > enum > bornes) sur des endpoints sans requestBody (ex: DELETE).
+
 export function parametersToObjectSchema(parameters: ParsedParameterLike[]): any {
   const properties: Record<string, any> = {};
   const required: string[] = [];
@@ -30,11 +29,8 @@ export function parametersToObjectSchema(parameters: ParsedParameterLike[]): any
 }
 
 // Génère une valeur qui viole vraiment le pattern de façon plausible, plutôt qu'un marqueur
-// générique du type "INVALID_FORMAT!!".
 function generatePatternViolatingValue(pattern: string): string {
   // Cas "tout sauf la répétition d'un caractère" (ex: '^(?!0{15}$)\d{15}$' — interdit "15 zéros")
-  // -> générer exactement cette valeur interdite : la violation la plus parlante possible,
-  // puisqu'elle respecte la longueur attendue et ne viole que l'exclusion documentée.
   const forbiddenRepeat = pattern.match(/\(\?!(.)\{(\d+)\}\$?\)/);
   if (forbiddenRepeat) {
     const [, char, count] = forbiddenRepeat;

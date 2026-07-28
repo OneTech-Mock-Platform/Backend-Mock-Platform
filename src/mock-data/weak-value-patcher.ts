@@ -2,12 +2,6 @@ import { buildFieldKey } from './field-suggestion.util';
 
 const GENERIC_STRING = /^string_value(?: #\d+)?$/;
 
-// Rejoue le schéma en parallèle d'une valeur DÉJÀ générée (mockContent/requestExample
-// stockés en base), et ne remplace QUE les valeurs qui sont encore exactement le
-// placeholder générique ('string_value'/'string_value #N' ou '{}') par la suggestion
-// Gemini correspondante. Tout le reste — y compris une édition manuelle faite depuis la
-// page Update Specification — reste strictement inchangé, contrairement à une
-// régénération complète qui écraserait tout.
 export function patchWeakValues(
   value: unknown,
   schema: any,
@@ -45,14 +39,12 @@ export function patchWeakValues(
     }
 
     if (schema.additionalProperties && typeof schema.additionalProperties === 'object') {
-      // generateObject() range le résultat sous { info: ... } pour ce cas.
       if ('info' in obj) {
         return { ...obj, info: patchWeakValues(obj.info, schema.additionalProperties, getSuggestion, 'info', depth + 1) };
       }
       return value;
     }
 
-    // additionalProperties: true, pas de properties : l'objet entier peut être le `{}` généré.
     if (fieldName && Object.keys(obj).length === 0) {
       const suggestion = getSuggestion(buildFieldKey('object', fieldName, schema.description));
       if (suggestion && typeof suggestion === 'object') return suggestion;

@@ -1,10 +1,13 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { MockDataService, isCauseDeterminable, buildAccessControlMessage } from '../mock-data/mock-data.service';
 import { generateViolatingExample, parametersToObjectSchema } from '../mock-data/constraint-violation.util';
+import { callGeminiJSON } from '../mock-data/gemini-client';
+import { flattenSchemaFields, buildPrompt, looksLikeErrorContent } from './scenario-ai.util';
 import { CreateScenarioDto } from './dto/create-scenario.dto';
 import { UpdateScenarioDto } from './dto/update-scenario.dto';
+import { GenerateScenarioContentDto } from './dto/generate-scenario-content.dto';
 
 @Injectable()
 export class ScenarioService {
@@ -44,6 +47,7 @@ export class ScenarioService {
     );
 
     const requestExampleIsAuto = dto.requestExample === undefined;
+    const mockContentIsAuto = dto.mockContent === undefined;
     const requestBodySchema = details?.requestBody?.schema;
 
     let requestExample: Record<string, unknown> | null =
@@ -109,6 +113,7 @@ export class ScenarioService {
         headers: dto.headers,
         requestExample: (requestExample as Prisma.InputJsonValue) ?? Prisma.JsonNull,
         requestExampleIsAuto,
+        mockContentIsAuto,
         delayMs: dto.delayMs ?? 0,
         endpointId: dto.endpointId,
       },
@@ -202,6 +207,7 @@ export class ScenarioService {
         headers: dto.headers,
         requestExample: dto.requestExample as Prisma.InputJsonValue | undefined,
         requestExampleIsAuto: dto.requestExample !== undefined ? false : undefined,
+        mockContentIsAuto: dto.mockContent !== undefined ? false : undefined,
         delayMs: dto.delayMs,
       },
       include: {
@@ -210,6 +216,63 @@ export class ScenarioService {
     });
 
     return updated;
+  }
+
+  // Génération assistée par IA du contenu d'un scénario (formulaire "Nouveau scénario") :
+  // contrairement aux suggestions de champs faibles (un champ à la fois, hors contexte), on
+  // envoie ici le nom/description tapés par l'utilisateur — c'est ce qui donne à Gemini le
+  // contexte métier précis ("Compte inexistant" plutôt qu'un champ générique). Le résultat
+  // n'est jamais sauvegardé automatiquement : il ne fait que pré-remplir le formulaire, la
+  // sauvegarde effective passe par create()/update() (mockContentIsAuto=false à ce moment-là).
+  async generateContentWithAI(endpointId: string, dto: GenerateScenarioContentDto, userId: number) {
+    const endpoint = await this.prisma.endpoint.findUnique({
+      where: { id: endpointId },
+      include: { spec: true },
+    });
+
+    if (!endpoint) {
+      throw new NotFoundException(`Endpoint ${endpointId} not found`);
+    }
+
+    if (endpoint.spec.userId !== userId) {
+      throw new ForbiddenException('You do not have access to this endpoint');
+    }
+
+    const details = endpoint.responses as {
+      requestBody?: { schema?: any } | null;
+      responses?: { statusCode: string; schema?: any }[];
+    } | null;
+
+    const requestFields = flattenSchemaFields(details?.requestBody?.schema);
+    const matchingResponse = details?.responses?.find(
+      (r) => parseInt(r.statusCode, 10) === dto.statusCode,
+    );
+    const responseFields = flattenSchemaFields(matchingResponse?.schema);
+
+    const prompt = buildPrompt({
+      name: dto.name,
+      description: dto.description,
+      statusCode: dto.statusCode,
+      requestFields,
+      responseFields,
+    });
+
+    try {
+      const result = await callGeminiJSON(prompt);
+      const isSuccessCode = [200, 201, 202, 204].includes(dto.statusCode);
+      const contentLooksLikeError = isSuccessCode && looksLikeErrorContent(result.mockContent);
+
+      return {
+        requestExample: result.requestExample ?? {},
+        mockContent: result.mockContent ?? {},
+        warning: contentLooksLikeError
+          ? `Le contenu généré ressemble à une erreur, mais le code sélectionné est ${dto.statusCode}. Vérifie que c'est bien le bon code pour ce scénario.`
+          : undefined,
+      };
+    } catch (err) {
+      console.error('[generateContentWithAI] Appel Gemini échoué :', err);
+      throw new ServiceUnavailableException('Génération IA indisponible pour le moment, remplis manuellement.');
+    }
   }
 
   async remove(id: string, userId: number) {

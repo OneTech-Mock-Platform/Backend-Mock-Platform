@@ -2,6 +2,7 @@ import { Controller, Get, Param, Query, UseGuards, Request } from '@nestjs/commo
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { SpecificationService } from '../specification/specification.service';
+import { detectEndpointWarnings } from './spec-warnings.util';
 
 @Controller('endpoints')
 @UseGuards(JwtAuthGuard)
@@ -20,6 +21,11 @@ export class EndpointController {
       orderBy: [{ method: 'asc' }, { path: 'asc' }],
     });
 
-    return { items: endpoints };
+    return {
+      items: endpoints.map((e) => ({
+        ...e,
+        warnings: detectEndpointWarnings(e.responses as any),
+      })),
+    };
   }
 }
