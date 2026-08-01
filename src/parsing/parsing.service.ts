@@ -9,8 +9,37 @@ import {
   ParsedRequestBody,
 } from './dto/parsed-spec.dto';
 
+export type SpecWarning = { line?: number; column?: number; message: string };
+
 @Injectable()
 export class ParsingService {
+  
+  async validateStrict(content: string, fileName: string): Promise<SpecWarning[]> {
+    const format = this.resolveFormat(fileName);
+    let raw: unknown;
+
+    try {
+      raw = format === 'json' ? JSON.parse(content) : yaml.load(content);
+    } catch {
+      return []; 
+    }
+
+    try {
+      await SwaggerParser.validate(raw as never);
+      return [];
+    } catch (err) {
+      return this.formatValidationErrors(err as Error);
+    }
+  }
+
+  private formatValidationErrors(err: Error): SpecWarning[] {
+    return err.message
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((message) => ({ message }));
+  }
+
   async parse(content: string, fileName: string): Promise<ParsedSpec> {
     const format = this.resolveFormat(fileName);
     let raw: unknown;

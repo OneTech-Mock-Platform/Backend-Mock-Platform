@@ -24,6 +24,8 @@ export class SpecificationService {
   ) {}
 
   async create(dto: CreateSpecificationDto, userId: number) {
+    await this.parsingService.parse(dto.content, dto.fileName!);
+
     const created = await this.prisma.openApiSpec.create({
       data: {
         name: dto.name,
@@ -36,7 +38,11 @@ export class SpecificationService {
     await this.parseAndSaveEndpoints(created.id, dto.content, dto.fileName!);
     await this.refreshFieldSuggestions(created.id);
     await this.generateScenarios(created.id);
-    return this.toResponse(created);
+
+  
+    const warnings = await this.parsingService.validateStrict(created.content, created.filePath);
+
+    return { ...this.toResponse(created), warnings };
   }
 
   async findAll(userId: number) {
@@ -70,20 +76,27 @@ export class SpecificationService {
     await this.ensureOwnership(id, userId);
 
     const existing = await this.prisma.openApiSpec.findUnique({ where: { id } });
+    const fileName = dto.fileName ?? existing!.filePath;
+    const content = dto.content ?? existing!.content;
+
+    await this.parsingService.parse(content, fileName);
 
     const updated = await this.prisma.openApiSpec.update({
       where: { id },
       data: {
         name: dto.name,
-        filePath: dto.fileName ?? existing?.filePath,
-        content: dto.content,
+        filePath: fileName,
+        content,
       },
     });
 
     await this.parseAndSaveEndpoints(updated.id, updated.content, updated.filePath);
     await this.refreshFieldSuggestions(updated.id);
     await this.generateScenarios(updated.id);
-    return this.toResponse(updated);
+
+    const warnings = await this.parsingService.validateStrict(updated.content, updated.filePath);
+
+    return { ...this.toResponse(updated), warnings };
   }
 
   async remove(id: string, userId: number) {
