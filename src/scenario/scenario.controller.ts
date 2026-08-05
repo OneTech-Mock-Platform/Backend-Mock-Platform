@@ -20,14 +20,12 @@ export class ScenarioController {
     return this.scenarioService.findAll(req.user.id);
   }
 
- // Route principale : scénarios d'un endpoint
+
   @Get('endpoint/:endpointId')
   async findByEndpoint(@Param('endpointId') endpointId: string, @Request() req: any) {
     return this.scenarioService.findByEndpoint(endpointId, req.user.id);
   }
 
-  // Pré-remplissage IA du formulaire "Nouveau scénario" (ne sauvegarde rien) : voir
-  // scenario.service.ts#generateContentWithAI et scenario-ai.util.ts pour le prompt.
   @Post('endpoint/:endpointId/generate-with-ai')
   async generateWithAI(
     @Param('endpointId') endpointId: string,

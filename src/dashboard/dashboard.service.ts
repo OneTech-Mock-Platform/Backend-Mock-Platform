@@ -50,8 +50,7 @@ export class DashboardService {
       .filter(([, count]) => count > 0)
       .map(([familyKey, count]) => ({ family: familyKey, count }));
 
-    // Regroupement des codes de statut par endpoint : sert à la fois au % multi-scénarios
-    // et au % de couverture d'erreur (endpoints ayant au moins un cas 4xx/5xx).
+    // Regroupement des codes de statut par endpoint
     const statusCodesByEndpoint = new Map<string, number[]>();
     for (const s of scenarios) {
       const list = statusCodesByEndpoint.get(s.endpointId) ?? [];
@@ -59,15 +58,13 @@ export class DashboardService {
       statusCodesByEndpoint.set(s.endpointId, list);
     }
 
-    // % d'endpoints avec plus d'un scénario (au-delà du simple 200 auto-généré)
+   
     const multiScenarioEndpoints = Array.from(statusCodesByEndpoint.values()).filter(
       (codes) => codes.length > 1,
     ).length;
     const multiScenarioPercent =
       endpointsCount > 0 ? Math.round((multiScenarioEndpoints / endpointsCount) * 1000) / 10 : 0;
 
-    // % d'endpoints couverts par au moins un scénario d'erreur (4xx/5xx) — signal de
-    // qualité des mocks générés, pas juste leur volume.
     const errorCoveredEndpoints = Array.from(statusCodesByEndpoint.values()).filter((codes) =>
       codes.some((code) => code >= 400),
     ).length;
@@ -78,7 +75,7 @@ export class DashboardService {
     const avgScenariosPerEndpoint =
       endpointsCount > 0 ? Math.round((scenarios.length / endpointsCount) * 10) / 10 : 0;
 
-    // Nombre de scénarios par spec (endpointId -> specId -> nom de la spec)
+    // Nombre de scénarios par spec 
     const specNameById = new Map(allSpecs.map((s) => [s.id, s.name]));
     const specIdByEndpointId = new Map(allEndpoints.map((e) => [e.id, e.specId]));
     const scenarioCountBySpecId = new Map<string, number>();

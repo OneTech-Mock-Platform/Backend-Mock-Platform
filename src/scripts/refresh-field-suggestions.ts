@@ -7,13 +7,6 @@ import { SpecificationService } from '../specification/specification.service';
 import { collectWeakFields } from '../mock-data/weak-field-collector';
 import { suggestFieldValues } from '../mock-data/gemini-field-suggester';
 
-// Script à lancer via `npm run fields:refresh` — UNE SEULE FOIS, pour rattraper toutes les
-// specs déjà importées avant que ce système existe. Les futures specs n'en ont plus besoin :
-// SpecificationService.create()/update() font déjà collecte → Gemini → cache → reload dans
-// le bon ordre, avant de générer leurs scénarios.
-//
-// Ici, en plus, on régénère (patch ciblé, pas d'écrasement) les scénarios déjà en base pour
-// qu'ils profitent immédiatement des nouvelles suggestions.
 async function main() {
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
@@ -54,8 +47,6 @@ async function main() {
       }
       console.log(`[fields:refresh] ${created} nouvelle(s) suggestion(s) enregistrée(s) dans FieldSuggestion.`);
 
-      // Étape critique : recharger le cache en mémoire AVANT de régénérer les scénarios,
-      // sinon regenerateScenarios() tournerait encore avec l'ancien cache (vide/partiel).
       await mockDataService.reloadSuggestionCache();
     } else {
       console.log('[fields:refresh] Tous les champs faibles sont déjà en cache. Aucun appel Gemini.');

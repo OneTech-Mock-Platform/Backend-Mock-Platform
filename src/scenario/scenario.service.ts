@@ -218,12 +218,7 @@ export class ScenarioService {
     return updated;
   }
 
-  // Génération assistée par IA du contenu d'un scénario (formulaire "Nouveau scénario") :
-  // contrairement aux suggestions de champs faibles (un champ à la fois, hors contexte), on
-  // envoie ici le nom/description tapés par l'utilisateur — c'est ce qui donne à Gemini le
-  // contexte métier précis ("Compte inexistant" plutôt qu'un champ générique). Le résultat
-  // n'est jamais sauvegardé automatiquement : il ne fait que pré-remplir le formulaire, la
-  // sauvegarde effective passe par create()/update() (mockContentIsAuto=false à ce moment-là).
+
   async generateContentWithAI(endpointId: string, dto: GenerateScenarioContentDto, userId: number) {
     const endpoint = await this.prisma.endpoint.findUnique({
       where: { id: endpointId },

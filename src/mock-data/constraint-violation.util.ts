@@ -2,7 +2,6 @@ export type ConstraintViolation = {
   example: Record<string, unknown>;
   violation: string;
   field: string;
-  // Message d'erreur métier écrit par l'auteur de la spec (x-pattern-message), quand disponible
  
   message?: string;
 };
@@ -13,7 +12,6 @@ type ParsedParameterLike = {
   schema?: any;
 };
 
-// Convertit une liste de parameters (query/path) en un schéma objet équivalent à un requestBody,
 
 export function parametersToObjectSchema(parameters: ParsedParameterLike[]): any {
   const properties: Record<string, any> = {};
@@ -28,17 +26,15 @@ export function parametersToObjectSchema(parameters: ParsedParameterLike[]): any
   return { type: 'object', properties, required };
 }
 
-// Génère une valeur qui viole vraiment le pattern de façon plausible, plutôt qu'un marqueur
+// Génère une valeur qui viole t le pattern 
 function generatePatternViolatingValue(pattern: string): string {
-  // Cas "tout sauf la répétition d'un caractère" (ex: '^(?!0{15}$)\d{15}$' — interdit "15 zéros")
   const forbiddenRepeat = pattern.match(/\(\?!(.)\{(\d+)\}\$?\)/);
   if (forbiddenRepeat) {
     const [, char, count] = forbiddenRepeat;
     return char.repeat(Number(count));
   }
 
-  // Cas "N caractères attendus" (ex: \d{15}, [0-9a-fA-F]{8}) -> générer un nombre de
-  // caractères incorrect (une longueur de moins), plausible et visiblement invalide.
+  
   const lengthMatch = pattern.match(/\{(\d+)\}/);
   if (lengthMatch) {
     const expectedLength = Number(lengthMatch[1]);
