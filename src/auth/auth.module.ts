@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { PassportModule } from '@nestjs/passport';
 import { KeycloakJwtStrategy } from './keycloak-jwt.strategy';
+import { KeycloakAdminService } from './keycloak-admin.service';
+import { ProfileController } from './profile.controller';
 
 // import { JwtModule } from '@nestjs/jwt';
 // import { AuthController } from './auth.controller.js';
@@ -11,11 +13,13 @@ import { KeycloakJwtStrategy } from './keycloak-jwt.strategy';
 @Module({
   imports: [
     PassportModule.register({ defaultStrategy: 'jwt' }),
-    // JwtModule.register({ secret: process.env.JWT_SECRET || 'onetech_secret_key_2026' }), 
+    // JwtModule.register({ secret: process.env.JWT_SECRET || 'onetech_secret_key_2026' }),
   ],
-  // controllers: [AuthController], 
+  controllers: [ProfileController],
+  // controllers: [AuthController],
   providers: [
-    KeycloakJwtStrategy, 
+    KeycloakJwtStrategy,
+    KeycloakAdminService,
     // AuthService, EmailService, JwtStrategy,
   ],
   exports: [KeycloakJwtStrategy],
