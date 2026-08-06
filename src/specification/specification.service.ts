@@ -199,7 +199,12 @@ export class SpecificationService {
 
       if (uncached.length === 0) return;
 
-      const suggestions = await suggestFieldValues(uncached);
+      const spec = await this.prisma.openApiSpec.findUnique({
+        where: { id: specId },
+        select: { name: true },
+      });
+
+      const suggestions = await suggestFieldValues(uncached, spec?.name);
 
       for (const field of uncached) {
         if (!Object.prototype.hasOwnProperty.call(suggestions, field.id)) continue;
