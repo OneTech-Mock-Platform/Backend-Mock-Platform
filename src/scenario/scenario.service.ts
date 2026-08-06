@@ -257,8 +257,10 @@ export class ScenarioService {
       const isSuccessCode = [200, 201, 202, 204].includes(dto.statusCode);
       const contentLooksLikeError = isSuccessCode && looksLikeErrorContent(result.mockContent);
 
+      const hasRequestSchema = requestFields.length > 0;
+
       return {
-        requestExample: result.requestExample ?? {},
+        requestExample: hasRequestSchema ? (result.requestExample ?? {}) : null,
         mockContent: result.mockContent ?? {},
         warning: contentLooksLikeError
           ? `Le contenu généré ressemble à une erreur, mais le code sélectionné est ${dto.statusCode}. Vérifie que c'est bien le bon code pour ce scénario.`

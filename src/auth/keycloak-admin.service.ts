@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { HttpException, Injectable } from '@nestjs/common';
 
 const KEYCLOAK_URL = process.env.KEYCLOAK_URL ?? 'http://localhost:9099';
 const KEYCLOAK_REALM = process.env.KEYCLOAK_REALM ?? 'mock-platform';
@@ -22,7 +22,7 @@ export class KeycloakAdminService {
       }),
     });
 
-    if (!res.ok) throw new Error(`Échec d'authentification du client de service Keycloak (${res.status})`);
+    if (!res.ok) throw new HttpException("Échec de l'authentification, veuillez réessayer plus tard", res.status);
 
     const data = await res.json();
     this.cachedToken = { value: data.access_token, expiresAt: Date.now() + (data.expires_in - 10) * 1000 };
@@ -36,7 +36,9 @@ export class KeycloakAdminService {
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-    if (!res.ok) throw new Error(await this.formatAdminApiError('mise à jour du profil Keycloak', res));
+    if (!res.ok) {
+      throw new HttpException(await this.formatAdminApiError('mise à jour du profil', res), res.status);
+    }
   }
 
   async changePassword(keycloakId: string, newPassword: string) {
@@ -46,31 +48,42 @@ export class KeycloakAdminService {
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ type: 'password', value: newPassword, temporary: false }),
     });
-    if (!res.ok) throw new Error(await this.formatAdminApiError('changement de mot de passe', res));
+    if (!res.ok) {
+      throw new HttpException(await this.formatAdminApiError('changement de mot de passe', res), res.status);
+    }
   }
 
   private async formatAdminApiError(action: string, res: Response): Promise<string> {
     const body = await res.text().catch(() => '');
-    let detail = body;
     let errorCode = '';
+    let field = '';
     try {
       const parsed = JSON.parse(body);
-   
       errorCode = parsed.errorMessage ?? parsed.error ?? '';
-      detail = parsed.field ? `champ "${parsed.field}" — ${errorCode}` : (errorCode || body);
+      field = parsed.field ?? '';
     } catch {
-     
+      // réponse non-JSON, on ignore le corps
     }
 
-    let hint = '';
-    if (res.status === 403) {
-      hint =
-        ' — le service account du client Keycloak (KEYCLOAK_ADMIN_CLIENT_ID) n\'a probablement pas le rôle "manage-users" du client "realm-management"';
-    } else if (errorCode === 'error-user-attribute-read-only') {
-      hint =
-        ' — ce champ est marqué en lecture seule côté realm ; pour "username" : Realm settings → Login (ou General) → active "Edit username"';
-    }
+    const message = this.translateError(errorCode, field, res.status);
+    return `Échec de ${action} : ${message}`;
+  }
 
-    return `Échec de ${action} (${res.status})${detail ? ` : ${detail}` : ''}${hint}`;
+  private translateError(errorCode: string, field: string, status: number): string {
+    if (errorCode === 'error-user-attribute-read-only' || /user name is missing/i.test(errorCode)) {
+      return field
+        ? `le champ "${field}" est requis ou non modifiable`
+        : "le nom d'utilisateur est requis";
+    }
+    if (status === 403) {
+      return "vous n'avez pas les droits nécessaires pour effectuer cette action";
+    }
+    if (status === 409) {
+      return 'cette valeur est déjà utilisée par un autre compte';
+    }
+    if (status === 404) {
+      return 'utilisateur introuvable';
+    }
+    return errorCode || 'une erreur est survenue, veuillez réessayer';
   }
 }
