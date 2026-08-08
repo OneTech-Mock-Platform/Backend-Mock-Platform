@@ -39,7 +39,10 @@ RÈGLES STRICTES :
 - Si un champ a un "exemple réel de la spec" indiqué, garde une valeur du MÊME TYPE/FORMAT que
   cet exemple (ex: un type d'instrument technique comme "CHECKBOOK") — n'adapte au thème du
   scénario QUE les champs de texte libre (motif, commentaire, message d'erreur)
-- Textes lisibles en français, concis (max 15 mots par phrase)
+- LANGUE : détecte automatiquement la langue utilisée dans le nom et la description du scénario
+  fournis ci-dessous (français, anglais, ou autre) et rédige TOUS les champs de texte libre
+  (motif, commentaire, message d'erreur...) dans CETTE MÊME langue. Ne traduis jamais vers une
+  autre langue que celle du scénario. Reste concis (max 15 mots par phrase)
 - N'invente aucun champ hors des schémas fournis`;
 
 export function buildPrompt(ctx: SchemaFieldsContext): string {
