@@ -22,7 +22,7 @@ export class KeycloakAdminService {
       }),
     });
 
-    if (!res.ok) throw new HttpException("Échec de l'authentification, veuillez réessayer plus tard", res.status);
+    if (!res.ok) throw new HttpException('Authentication failed, please try again later', res.status);
 
     const data = await res.json();
     this.cachedToken = { value: data.access_token, expiresAt: Date.now() + (data.expires_in - 10) * 1000 };
@@ -37,7 +37,7 @@ export class KeycloakAdminService {
       body: JSON.stringify(data),
     });
     if (!res.ok) {
-      throw new HttpException(await this.formatAdminApiError('mise à jour du profil', res), res.status);
+      throw new HttpException(await this.formatAdminApiError('update the profile', res), res.status);
     }
   }
 
@@ -49,7 +49,7 @@ export class KeycloakAdminService {
       body: JSON.stringify({ type: 'password', value: newPassword, temporary: false }),
     });
     if (!res.ok) {
-      throw new HttpException(await this.formatAdminApiError('changement de mot de passe', res), res.status);
+      throw new HttpException(await this.formatAdminApiError('change the password', res), res.status);
     }
   }
 
@@ -62,28 +62,28 @@ export class KeycloakAdminService {
       errorCode = parsed.errorMessage ?? parsed.error ?? '';
       field = parsed.field ?? '';
     } catch {
-      // réponse non-JSON, on ignore le corps
+      // non-JSON response, ignore the body
     }
 
     const message = this.translateError(errorCode, field, res.status);
-    return `Échec de ${action} : ${message}`;
+    return `Failed to ${action}: ${message}`;
   }
 
   private translateError(errorCode: string, field: string, status: number): string {
     if (errorCode === 'error-user-attribute-read-only' || /user name is missing/i.test(errorCode)) {
       return field
-        ? `le champ "${field}" est requis ou non modifiable`
-        : "le nom d'utilisateur est requis";
+        ? `the "${field}" field is required or cannot be changed`
+        : 'username is required';
     }
     if (status === 403) {
-      return "vous n'avez pas les droits nécessaires pour effectuer cette action";
+      return 'you do not have the necessary permissions to perform this action';
     }
     if (status === 409) {
-      return 'cette valeur est déjà utilisée par un autre compte';
+      return 'this value is already used by another account';
     }
     if (status === 404) {
-      return 'utilisateur introuvable';
+      return 'user not found';
     }
-    return errorCode || 'une erreur est survenue, veuillez réessayer';
+    return errorCode || 'an error occurred, please try again';
   }
 }

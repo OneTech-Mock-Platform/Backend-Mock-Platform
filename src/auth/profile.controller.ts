@@ -17,7 +17,7 @@ export class ProfileController {
     const { password, ...profileData } = dto;
 
     if (password && password.length < MIN_PASSWORD_LENGTH) {
-      throw new BadRequestException(`Le mot de passe doit contenir au moins ${MIN_PASSWORD_LENGTH} caractères.`);
+      throw new BadRequestException(`Password must be at least ${MIN_PASSWORD_LENGTH} characters long.`);
     }
 
     if (Object.keys(profileData).length > 0) {
@@ -26,6 +26,6 @@ export class ProfileController {
     if (password) {
       await this.keycloakAdminService.changePassword(req.user.keycloakId, password);
     }
-    return { message: 'Profil mis à jour avec succès' };
+    return { message: 'Profile updated successfully' };
   }
 }
