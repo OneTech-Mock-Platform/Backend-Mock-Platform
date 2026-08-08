@@ -1,6 +1,8 @@
-import { Body, Controller, Patch, Request, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Patch, Request, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { KeycloakAdminService } from './keycloak-admin.service';
+
+const MIN_PASSWORD_LENGTH = 6;
 
 @Controller()
 export class ProfileController {
@@ -13,6 +15,11 @@ export class ProfileController {
     @Body() dto: { firstName?: string; lastName?: string; username?: string; email?: string; password?: string },
   ) {
     const { password, ...profileData } = dto;
+
+    if (password && password.length < MIN_PASSWORD_LENGTH) {
+      throw new BadRequestException(`Le mot de passe doit contenir au moins ${MIN_PASSWORD_LENGTH} caractères.`);
+    }
+
     if (Object.keys(profileData).length > 0) {
       await this.keycloakAdminService.updateProfile(req.user.keycloakId, profileData);
     }
