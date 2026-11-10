@@ -244,11 +244,6 @@ export class MockDataService implements OnModuleInit {
       return result;
     }
 
-    /*
-    if (schema.additionalProperties && typeof schema.additionalProperties === 'object') {
-  return {}; // additionalProperties ne dit jamais quelles clés existent réellement — on n'invente pas de nom de clé
-}
-  */
     if (schema.additionalProperties && typeof schema.additionalProperties === 'object') {
       return { info: this.generate(schema.additionalProperties, depth + 1, 'info', undefined, undefined, ctx) };
     }

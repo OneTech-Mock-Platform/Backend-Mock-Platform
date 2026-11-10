@@ -6,11 +6,6 @@ export class UpdateProfileDto {
   @MinLength(2, { message: 'Le nom doit contenir au moins 2 caractères' })
   name?: string;
 
- /*  @IsOptional()
-  @IsString()
-  @MinLength(6)
-  currentPassword?: string; */
-
   @IsOptional()
   @IsString({ message: 'Le nouveau mot de passe doit être une chaîne de caractères' })
   @MinLength(6, { message: 'Le nouveau mot de passe doit contenir au moins 6 caractères' })

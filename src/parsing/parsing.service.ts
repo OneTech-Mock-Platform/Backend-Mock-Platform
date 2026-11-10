@@ -89,7 +89,6 @@ export class ParsingService {
 
         if (!op) continue;
 
-        // ── Paramètres ──
         const parameters: ParsedParameter[] = (
           (op.parameters as any[]) ?? []
         ).map((p: any) => ({
@@ -100,7 +99,6 @@ export class ParsingService {
           schema: p.schema,
         }));
 
-        // ── Request Body ──
         let requestBody: ParsedRequestBody | undefined;
         if (op.requestBody) {
           const rb = op.requestBody as any;
@@ -113,7 +111,6 @@ export class ParsingService {
           };
         }
 
-        // ── Réponses avec schémas résolus ──
         const responsesRaw = (op.responses as Record<string, any>) ?? {};
         const responses: ParsedResponse[] = Object.entries(responsesRaw).map(
           ([code, res]) => {
@@ -128,7 +125,6 @@ export class ParsingService {
           },
         );
 
-        // ── Extensions x-BbAccessControl-* (resource/function/privilege requis) ──
         const accessControlResource = op['x-BbAccessControl-resource'] as string | undefined;
         const accessControlFunction = op['x-BbAccessControl-function'] as string | undefined;
         const accessControlPrivilege = op['x-BbAccessControl-privilege'] as string | undefined;

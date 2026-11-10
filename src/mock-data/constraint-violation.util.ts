@@ -26,7 +26,7 @@ export function parametersToObjectSchema(parameters: ParsedParameterLike[]): any
   return { type: 'object', properties, required };
 }
 
-// Génère une valeur qui viole t le pattern 
+
 function generatePatternViolatingValue(pattern: string): string {
   const forbiddenRepeat = pattern.match(/\(\?!(.)\{(\d+)\}\$?\)/);
   if (forbiddenRepeat) {

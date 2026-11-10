@@ -39,7 +39,6 @@ export class DashboardService {
       }),
     ]);
 
-    // Répartition des scénarios par famille de code (2xx/3xx/4xx/5xx)
     const family: Record<string, number> = { '2xx': 0, '3xx': 0, '4xx': 0, '5xx': 0 };
     for (const s of scenarios) {
       const bucket = Math.floor(s.statusCode / 100);
@@ -50,7 +49,6 @@ export class DashboardService {
       .filter(([, count]) => count > 0)
       .map(([familyKey, count]) => ({ family: familyKey, count }));
 
-    // Regroupement des codes de statut par endpoint
     const statusCodesByEndpoint = new Map<string, number[]>();
     for (const s of scenarios) {
       const list = statusCodesByEndpoint.get(s.endpointId) ?? [];
@@ -71,11 +69,10 @@ export class DashboardService {
     const errorCoveragePercent =
       endpointsCount > 0 ? Math.round((errorCoveredEndpoints / endpointsCount) * 1000) / 10 : 0;
 
-    // Nombre moyen de scénarios générés par endpoint
     const avgScenariosPerEndpoint =
       endpointsCount > 0 ? Math.round((scenarios.length / endpointsCount) * 10) / 10 : 0;
 
-    // Nombre de scénarios par spec 
+   
     const specNameById = new Map(allSpecs.map((s) => [s.id, s.name]));
     const specIdByEndpointId = new Map(allEndpoints.map((e) => [e.id, e.specId]));
     const scenarioCountBySpecId = new Map<string, number>();

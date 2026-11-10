@@ -31,10 +31,6 @@ function walk(schema: any, fieldName: string | undefined, depth: number, endpoin
     return;
   }
 
-  /*if (schema.type === 'array') {
-    if (schema.items) walk(schema.items, undefined, depth + 1, endpointHint, out);
-    return;
-  }*/
 
     if (schema.type === 'array') {
   if (schema.items) walk(schema.items, fieldName, depth + 1, endpointHint, out);

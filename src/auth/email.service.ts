@@ -26,7 +26,7 @@ export class EmailService {
       this.configService.get<string>('BREVO_SENDER_NAME') ?? 'Mock Platform';
   }
 
-  // ── Méthode privée pour envoyer ─────────────────
+
   private async sendEmail(
     to: string,
     subject: string,
@@ -60,7 +60,7 @@ export class EmailService {
     `;
   }
 
-  // ── Password Reset ──────────────────────────────
+
   async sendPasswordResetEmail(email: string, otp: string): Promise<void> {
     try {
       await this.sendEmail(
@@ -84,7 +84,6 @@ export class EmailService {
     }
   }
 
-  // ── Login 2FA OTP ───────────────────────────────
   async sendLoginOtpEmail(email: string, otp: string): Promise<void> {
     try {
       await this.sendEmail(
